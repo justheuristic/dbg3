@@ -11,7 +11,7 @@ class TrainerModel(nn.Module):
         self.mixture = nn.Sequential(
             *[RemoteMixtureOfExperts(in_features=expert_dim, grid_size=grid_size, dht=dht,
                                      k_best=4, forward_timeout=10, backward_timeout=1, timeout_after_k_min=1,
-                                     uid_prefix='expert')
+                                     uid_prefix='expert.')
               for _ in range(num_moe_blocks)])
         self.output_proj = nn.Linear(expert_dim, output_dim)
 
@@ -22,7 +22,7 @@ class TrainerModel(nn.Module):
 def main(args):
     init_peers = [args.rendezvous] if args.rendezvous is not None else []
     dht = DHT(initial_peers=init_peers, wait_timeout=5, start=True, listen=False)
-    trainer = TrainerModel(args.hidden_dim, (4, 32), dht, 4)
+    trainer = TrainerModel(args.hidden_dim, [args.grid_size for _ in range(args.grid_dimensions)], dht, 4)
     for i in range(999):
         print(f'{i} forwarding')
         output = trainer(torch.randn(32, args.hidden_dim))
