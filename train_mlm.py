@@ -1,3 +1,4 @@
+import os
 from argparse import ArgumentParser
 from multiprocessing import cpu_count
 
@@ -6,8 +7,8 @@ import torch.nn as nn
 from hivemind import RemoteMixtureOfExperts, DHT
 from transformers import Trainer, TrainingArguments, EvaluationStrategy
 from transformers.data.data_collator import DataCollatorForLanguageModeling
-from transformers.modeling_roberta import RobertaEmbeddings, RobertaConfig, MaskedLMOutput
-from transformers.tokenization_roberta_fast import RobertaTokenizerFast
+from transformers.models.roberta.modeling_roberta import RobertaEmbeddings, RobertaConfig, MaskedLMOutput, RobertaLMHead
+from transformers.models.roberta.tokenization_roberta_fast import RobertaTokenizerFast
 
 
 class TrainerModel(nn.Module):
@@ -19,13 +20,14 @@ class TrainerModel(nn.Module):
 
         self.embeddings = RobertaEmbeddings(self.config)
 
-        self.mixture = nn.Sequential(
-            *[RemoteMixtureOfExperts(in_features=expert_dim, grid_size=grid_size, dht=dht,
-                                     k_best=5, k_min=1, forward_timeout=10, backward_timeout=1, timeout_after_k_min=1,
-                                     uid_prefix='expert.')
-              for _ in range(num_moe_blocks)])
+        self.mixture = nn.ModuleList(
+            [
+                RemoteMixtureOfExperts(in_features=expert_dim, grid_size=grid_size, dht=dht,
+                                       k_best=5, k_min=1, forward_timeout=10, backward_timeout=1, timeout_after_k_min=1,
+                                       uid_prefix='expert.')
+                for _ in range(num_moe_blocks)])
 
-        self.lm_head = nn.Linear(expert_dim, vocab_size)
+        self.lm_head = RobertaLMHead(self.config)
 
     def forward(
             self,
@@ -43,8 +45,11 @@ class TrainerModel(nn.Module):
             return_dict=None,
     ):
         embeddings = self.embeddings(input_ids)
-        output = self.mixture(embeddings)
-        prediction_scores = self.lm_head(output)
+
+        for layer in self.mixture:
+            embeddings = layer(embeddings, src_key_padding_mask=~attention_mask.bool())
+
+        prediction_scores = self.lm_head(embeddings)
 
         masked_lm_loss = None
         if labels is not None:
@@ -52,7 +57,7 @@ class TrainerModel(nn.Module):
                                                          labels.view(-1))
 
         if not return_dict:
-            output = (prediction_scores, output)
+            output = (prediction_scores, embeddings)
             return ((masked_lm_loss,) + output) if masked_lm_loss is not None else output
 
         return MaskedLMOutput(
@@ -63,36 +68,41 @@ class TrainerModel(nn.Module):
 
 def main(args):
     tokenizer = RobertaTokenizerFast.from_pretrained('roberta-base')
-    wikitext = datasets.load_dataset('wikitext', 'wikitext-103-v1', cache_dir='.data_cache')
 
-    def tokenize_function(examples):
-        # Remove empty lines
-        examples["text"] = [line for line in examples["text"] if len(line) > 0 and not line.isspace()]
-        return tokenizer(
-            examples["text"],
-            padding=False,
-            truncation=True,
-            max_length=256,
-            # We use this option because DataCollatorForLanguageModeling (see below) is more efficient when it
-            # receives the `special_tokens_mask`.
-            return_special_tokens_mask=True,
+    if not os.path.exists('tokenized_wikitext'):
+        wikitext = datasets.load_dataset('wikitext', 'wikitext-103-v1', cache_dir='.data_cache')
+
+        def tokenize_function(examples):
+            # Remove empty lines
+            examples["text"] = [line for line in examples["text"] if len(line) > 0 and not line.isspace()]
+            return tokenizer(
+                examples["text"],
+                padding=False,
+                truncation=True,
+                max_length=256,
+                # We use this option because DataCollatorForLanguageModeling (see below) is more efficient when it
+                # receives the `special_tokens_mask`.
+                return_special_tokens_mask=True,
+            )
+
+        tokenized_wikitext = wikitext.map(
+            tokenize_function,
+            batched=True,
+            num_proc=cpu_count(),
+            remove_columns=["text"],
         )
 
-    tokenized_wikitext = wikitext.map(
-        tokenize_function,
-        batched=True,
-        num_proc=cpu_count(),
-        remove_columns=["text"],
-        load_from_cache_file=True,
-    )
+        tokenized_wikitext.save_to_disk('tokenized_wikitext')
+    else:
+        tokenized_wikitext = datasets.load_from_disk('tokenized_wikitext')
 
     collator = DataCollatorForLanguageModeling(tokenizer, mlm=True)
 
-    training_args = TrainingArguments(output_dir='mlm', overwrite_output_dir=True, do_train=True, do_eval=True,
-                                      do_predict=False,
+    training_args = TrainingArguments(output_dir='mlm', overwrite_output_dir=True,
+                                      do_train=True, do_eval=True, do_predict=False,
                                       evaluation_strategy=EvaluationStrategy.STEPS, prediction_loss_only=True,
-                                      per_device_train_batch_size=1,
-                                      per_device_eval_batch_size=1, max_steps=10000, warmup_steps=4000,
+                                      per_device_train_batch_size=4,
+                                      per_device_eval_batch_size=4, max_steps=10000, warmup_steps=4000,
                                       gradient_accumulation_steps=1,
                                       logging_first_step=True,
                                       save_total_limit=5, seed=0, dataloader_num_workers=1)
