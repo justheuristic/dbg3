@@ -1,0 +1,14 @@
+python local_train_mlm.py \
+  --use_fixup --ln_type post \
+  --output_dir fixup_post --overwrite_output_dir \
+  --do_train --do_eval \
+  --evaluation_strategy steps \
+  --per_device_train_batch_size 32 \
+  --per_device_eval_batch_size 32 \
+  --gradient_accumulation_steps 4 \
+  --learning_rate 0.0001 --max_grad_norm 25.0 \
+  --max_steps 50000 --warmup_steps 0 \
+  --logging_dir logs/fixup_post --logging_first_step \
+  --save_steps 5000 --save_total_limit 5 \
+  --seed 0 --fp16 --fp16_opt_level O1 --eval_steps 5000 \
+  --dataloader_num_workers 4 --load_best_model_at_end
