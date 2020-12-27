@@ -1,8 +1,10 @@
 import os
 from argparse import ArgumentParser
 from multiprocessing import cpu_count
+from pathlib import Path
 
 import datasets
+import torch
 import torch.nn as nn
 from hivemind import RemoteMixtureOfExperts, DHT
 from transformers import Trainer, TrainingArguments, EvaluationStrategy
@@ -12,7 +14,7 @@ from transformers.models.roberta.tokenization_roberta_fast import RobertaTokeniz
 
 
 class TrainerModel(nn.Module):
-    def __init__(self, vocab_size, expert_dim, grid_size, dht, num_moe_blocks=2):
+    def __init__(self, vocab_size, expert_dim, grid_size, dht, num_moe_blocks=12):
         super().__init__()
         self.config = RobertaConfig.from_pretrained('roberta-base')
         self.config.hidden_size = expert_dim
@@ -23,7 +25,8 @@ class TrainerModel(nn.Module):
         self.mixture = nn.ModuleList(
             [
                 RemoteMixtureOfExperts(in_features=expert_dim, grid_size=grid_size, dht=dht,
-                                       k_best=5, k_min=1, forward_timeout=10, backward_timeout=1, timeout_after_k_min=1,
+                                       k_best=5, k_min=1, forward_timeout=2, backward_timeout=2,
+                                       timeout_after_k_min=1,
                                        uid_prefix='expert.')
                 for _ in range(num_moe_blocks)])
 
@@ -67,6 +70,7 @@ class TrainerModel(nn.Module):
 
 
 def main(args):
+    torch.set_num_threads(16)
     tokenizer = RobertaTokenizerFast.from_pretrained('roberta-base')
 
     if not os.path.exists('tokenized_wikitext'):
@@ -101,28 +105,37 @@ def main(args):
     training_args = TrainingArguments(output_dir='mlm', overwrite_output_dir=True,
                                       do_train=True, do_eval=True, do_predict=False,
                                       evaluation_strategy=EvaluationStrategy.STEPS, prediction_loss_only=True,
-                                      per_device_train_batch_size=4,
-                                      per_device_eval_batch_size=4, max_steps=10000, warmup_steps=4000,
-                                      gradient_accumulation_steps=1,
+                                      per_device_train_batch_size=32,
+                                      per_device_eval_batch_size=32, max_steps=10000, warmup_steps=4000,
+                                      gradient_accumulation_steps=8,
                                       logging_first_step=True,
-                                      save_total_limit=5, seed=0, dataloader_num_workers=1)
+                                      save_total_limit=5, seed=0, dataloader_num_workers=4, no_cuda=not args.cuda)
 
-    grid_size = tuple(args.grid_size for _ in range(args.grid_dimensions))
-    dht = DHT(initial_peers=[args.init_peer], start=True, listen=False, wait_timeout=5)
+    grid_size = (16, 128)
+    dht = DHT(initial_peers=[args.init_peer], start=True, listen=False, wait_timeout=1)
 
     model = TrainerModel(tokenizer.vocab_size, args.hidden_dim, grid_size, dht)
+
+    if args.restore_from_checkpoint is not None:
+        checkpoint_path = Path(args.restore_from_checkpoint) / 'pytorch_model.bin'
+        if checkpoint_path.exists():
+            model_checkpoint = torch.load(checkpoint_path)
+            model.load_state_dict(model_checkpoint)
 
     trainer = Trainer(model=model, args=training_args, train_dataset=tokenized_wikitext['train'],
                       eval_dataset=tokenized_wikitext['validation'], tokenizer=tokenizer, data_collator=collator)
 
-    trainer.train()
+    print('Starting training')
+    trainer.train(args.restore_from_checkpoint)
 
 
 if __name__ == '__main__':
     parser = ArgumentParser()
     parser.add_argument('--grid-size', '-g', type=int, default=100)
     parser.add_argument('--grid-dimensions', '-d', type=int, default=3)
-    parser.add_argument('--hidden_dim', type=int, default=256, required=False, help='main dimension for expert_cls')
+    parser.add_argument('--hidden-dim', type=int, default=1024, required=False, help='main dimension for expert_cls')
     parser.add_argument('--init-peer')
+    parser.add_argument('--restore-from-checkpoint')
+    parser.add_argument('--cuda', action='store_true')
     args = parser.parse_args()
     main(args)
