@@ -512,15 +512,21 @@ class RobertaPreTrainedModel(PreTrainedModel):
 
             if isinstance(module, nn.Linear):
                 nn.init.xavier_uniform_(module.weight)
+
             elif isinstance(module, nn.Embedding):
+                print('fixup embedding')
                 nn.init.normal_(module.weight, mean=0, std=module.embedding_dim ** -0.5)
                 module.weight.data = (9 * num_layers) ** (- 1 / 4) * module.weight.data
 
             if isinstance(module, (RobertaIntermediate, RobertaOutput)):
+                print('fixup interm')
                 nn.init.xavier_uniform_(module.dense.weight)
                 module.dense.weight.data = (0.67 * num_layers ** (- 1 / 4)) * module.dense.weight.data
 
             if isinstance(module, RobertaSelfAttention):
+                print('fixup self attn')
+                nn.init.xavier_uniform_(module.query.weight)
+                nn.init.xavier_uniform_(module.key.weight)
                 nn.init.xavier_uniform_(module.value.weight)
                 module.value.weight.data = (0.67 * num_layers ** (- 1 / 4)) * module.value.weight.data
 

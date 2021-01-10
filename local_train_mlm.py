@@ -75,7 +75,7 @@ def main():
     # Set seed before initializing model.
     set_seed(training_args.seed)
 
-    config = RobertaFixupConfig.from_pretrained('roberta-base', use_fixup=model_args.use_fixup,
+    config = RobertaFixupConfig.from_pretrained('roberta-large', use_fixup=model_args.use_fixup,
                                                 ln_type=model_args.ln_type)
 
     tokenizer = RobertaTokenizerFast.from_pretrained('roberta-base')
@@ -134,14 +134,14 @@ def main():
         eps=training_args.adam_epsilon,
     )
 
-    if training_args.warmup_steps != 0:
-        lr_scheduler = get_linear_schedule_with_warmup(
-            optimizer, num_warmup_steps=training_args.warmup_steps, num_training_steps=training_args.max_steps
-        )
-    else:
-        lr_scheduler = get_constant_schedule(
-            optimizer
-        )
+    # if training_args.warmup_steps != 0:
+    lr_scheduler = get_linear_schedule_with_warmup(
+        optimizer, num_warmup_steps=training_args.warmup_steps, num_training_steps=training_args.max_steps
+    )
+    # else:
+    #     lr_scheduler = get_constant_schedule(
+    #         optimizer
+    #     )
 
     # Initialize our Trainer
     trainer = Trainer(
@@ -156,35 +156,7 @@ def main():
 
     # Training
     if training_args.do_train:
-        train_result = trainer.train()
-
-        output_train_file = os.path.join(training_args.output_dir, "train_results.txt")
-        if trainer.is_world_process_zero():
-            with open(output_train_file, "w") as writer:
-                logger.info("***** Train results *****")
-                for key, value in sorted(train_result.metrics.items()):
-                    logger.info(f"  {key} = {value}")
-                    writer.write(f"{key} = {value}\n")
-
-    # Evaluation
-    results = {}
-    if training_args.do_eval:
-        logger.info("*** Evaluate ***")
-
-        eval_output = trainer.evaluate()
-
-        perplexity = math.exp(eval_output["eval_loss"])
-        results["perplexity"] = perplexity
-
-        output_eval_file = os.path.join(training_args.output_dir, "eval_results_mlm.txt")
-        if trainer.is_world_process_zero():
-            with open(output_eval_file, "w") as writer:
-                logger.info("***** Eval results *****")
-                for key, value in sorted(results.items()):
-                    logger.info(f"  {key} = {value}")
-                    writer.write(f"{key} = {value}\n")
-
-    return results
+        trainer.train()
 
 
 if __name__ == "__main__":
