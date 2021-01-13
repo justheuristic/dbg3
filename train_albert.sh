@@ -1,0 +1,16 @@
+python local_train_mlm.py \
+  --output_dir albert --overwrite_output_dir \
+  --do_train --do_eval \
+  --evaluation_strategy steps \
+  --per_device_train_batch_size 32 \
+  --per_device_eval_batch_size 32 \
+  --gradient_accumulation_steps 16 \
+  --learning_rate 0.002 --max_grad_norm 25.0 \
+  --max_steps 50000 --warmup_steps 5000 \
+  --logging_dir logs/albert --logging_first_step \
+  --save_steps 5000 --save_total_limit 5 \
+  --fp16 \
+  --seed 0 --eval_steps 5000 \
+  --dataloader_num_workers 4 \
+  --adam_epsilon 1e-6 \
+  --weight_decay 0.01

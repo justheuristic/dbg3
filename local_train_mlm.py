@@ -1,32 +1,16 @@
 import logging
-import math
 import os
-import sys
-from dataclasses import dataclass, field
 from multiprocessing import cpu_count
 
 import transformers
+from apex.optimizers import FusedLAMB
 from datasets import load_dataset, load_from_disk
 from transformers import DataCollatorForLanguageModeling, HfArgumentParser, Trainer, TrainingArguments, set_seed, \
-    RobertaTokenizerFast
+    AlbertTokenizerFast, AlbertConfig, AlbertForMaskedLM
+from transformers.optimization import get_linear_schedule_with_warmup
 from transformers.trainer_utils import is_main_process
-from transformers.optimization import AdamW, get_linear_schedule_with_warmup, get_constant_schedule
-
-from configuration_roberta_fixup import RobertaFixupConfig
-from modeling_roberta_fixup import RobertaForMaskedLM
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass
-class ModelArguments:
-    """
-    Arguments pertaining to which model/config/tokenizer we are going to fine-tune, or train from scratch.
-    """
-
-    use_fixup: bool = field(default=False)
-
-    ln_type: str = field(default='post')
 
 
 def main():
@@ -34,13 +18,8 @@ def main():
     # or by passing the --help flag to this script.
     # We now keep distinct sets of args, for a cleaner separation of concerns.
 
-    parser = HfArgumentParser((ModelArguments, TrainingArguments))
-    if len(sys.argv) == 2 and sys.argv[1].endswith(".json"):
-        # If we pass only one argument to the script and it's the path to a json file,
-        # let's parse it to get our arguments.
-        model_args, training_args = parser.parse_json_file(json_file=os.path.abspath(sys.argv[1]))
-    else:
-        model_args, training_args = parser.parse_args_into_dataclasses()
+    parser = HfArgumentParser((TrainingArguments,))
+    training_args, = parser.parse_args_into_dataclasses()
 
     if (
             os.path.exists(training_args.output_dir)
@@ -75,16 +54,15 @@ def main():
     # Set seed before initializing model.
     set_seed(training_args.seed)
 
-    config = RobertaFixupConfig.from_pretrained('roberta-large', use_fixup=model_args.use_fixup,
-                                                ln_type=model_args.ln_type)
+    config = AlbertConfig.from_pretrained('albert-large-v2')
 
-    tokenizer = RobertaTokenizerFast.from_pretrained('roberta-base')
+    tokenizer = AlbertTokenizerFast.from_pretrained('albert-large-v2')
 
-    model = RobertaForMaskedLM(config)
+    model = AlbertForMaskedLM(config)
 
     model.resize_token_embeddings(len(tokenizer))
 
-    if not os.path.exists('tokenized_wikitext'):
+    if not os.path.exists('albert_tokenized_wikitext'):
         wikitext = load_dataset('wikitext', 'wikitext-103-v1', cache_dir='.data_cache')
 
         def tokenize_function(examples):
@@ -107,9 +85,9 @@ def main():
             remove_columns=["text"],
         )
 
-        tokenized_datasets.save_to_disk('tokenized_wikitext')
+        tokenized_datasets.save_to_disk('albert_tokenized_wikitext')
     else:
-        tokenized_datasets = load_from_disk('tokenized_wikitext')
+        tokenized_datasets = load_from_disk('albert_tokenized_wikitext')
 
     # Data collator
     # This one will take care of randomly masking the tokens.
@@ -127,23 +105,17 @@ def main():
         },
     ]
 
-    optimizer = AdamW(
+    optimizer = FusedLAMB(
         optimizer_grouped_parameters,
         lr=training_args.learning_rate,
         betas=(training_args.adam_beta1, training_args.adam_beta2),
         eps=training_args.adam_epsilon,
     )
 
-    # if training_args.warmup_steps != 0:
     lr_scheduler = get_linear_schedule_with_warmup(
         optimizer, num_warmup_steps=training_args.warmup_steps, num_training_steps=training_args.max_steps
     )
-    # else:
-    #     lr_scheduler = get_constant_schedule(
-    #         optimizer
-    #     )
 
-    # Initialize our Trainer
     trainer = Trainer(
         model=model,
         args=training_args,
