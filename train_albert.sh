@@ -2,8 +2,8 @@ python local_train_mlm.py \
   --output_dir albert --overwrite_output_dir \
   --do_train --do_eval \
   --evaluation_strategy steps \
-  --per_device_train_batch_size 32 \
-  --per_device_eval_batch_size 32 \
+  --per_device_train_batch_size 64 \
+  --per_device_eval_batch_size 64 \
   --gradient_accumulation_steps 16 \
   --learning_rate 0.002 --max_grad_norm 25.0 \
   --max_steps 50000 --warmup_steps 5000 \

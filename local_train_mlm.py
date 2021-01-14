@@ -54,9 +54,9 @@ def main():
     # Set seed before initializing model.
     set_seed(training_args.seed)
 
-    config = AlbertConfig.from_pretrained('albert-large-v2')
+    config = AlbertConfig.from_pretrained('albert-base-v2')
 
-    tokenizer = AlbertTokenizerFast.from_pretrained('albert-large-v2')
+    tokenizer = AlbertTokenizerFast.from_pretrained('albert-base-v2')
 
     model = AlbertForMaskedLM(config)
 
