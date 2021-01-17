@@ -1,6 +1,9 @@
 import logging
 import os
+from dataclasses import dataclass, field
+from typing import Optional
 from multiprocessing import cpu_count
+from pathlib import Path
 
 import transformers
 from apex.optimizers import FusedLAMB
@@ -13,13 +16,23 @@ from transformers.trainer_utils import is_main_process
 logger = logging.getLogger(__name__)
 
 
+@dataclass
+class DatasetArguments:
+    dataset_path: Optional[str] = field(
+        default='.', metadata={"help": "Path to the dataset"}
+    )
+    cache_dir: Optional[str] = field(
+        default='.', metadata={"help": "Path to the cache"}
+    )
+
+
 def main():
     # See all possible arguments in src/transformers/training_args.py
     # or by passing the --help flag to this script.
     # We now keep distinct sets of args, for a cleaner separation of concerns.
 
-    parser = HfArgumentParser((TrainingArguments,))
-    training_args, = parser.parse_args_into_dataclasses()
+    parser = HfArgumentParser((TrainingArguments, DatasetArguments))
+    training_args, dataset_args = parser.parse_args_into_dataclasses()
 
     if (
             os.path.exists(training_args.output_dir)
@@ -62,8 +75,10 @@ def main():
 
     model.resize_token_embeddings(len(tokenizer))
 
-    if not os.path.exists('albert_tokenized_wikitext'):
-        wikitext = load_dataset('wikitext', 'wikitext-103-v1', cache_dir='.data_cache')
+    tokenized_dataset_path = Path(dataset_args.dataset_path) / 'albert_tokenized_wikitext'
+
+    if not tokenized_dataset_path.exists():
+        wikitext = load_dataset('wikitext', 'wikitext-103-v1', cache_dir=dataset_args.cache_dir)
 
         def tokenize_function(examples):
             # Remove empty lines
@@ -85,9 +100,9 @@ def main():
             remove_columns=["text"],
         )
 
-        tokenized_datasets.save_to_disk('albert_tokenized_wikitext')
+        tokenized_datasets.save_to_disk(tokenized_dataset_path)
     else:
-        tokenized_datasets = load_from_disk('albert_tokenized_wikitext')
+        tokenized_datasets = load_from_disk(tokenized_dataset_path)
 
     # Data collator
     # This one will take care of randomly masking the tokens.
