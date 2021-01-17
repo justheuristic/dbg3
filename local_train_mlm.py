@@ -21,6 +21,14 @@ class DatasetArguments:
     dataset_path: Optional[str] = field(
         default='.', metadata={"help": "Path to the dataset"}
     )
+
+    tokenizer_path: Optional[str] = field(
+        default='.', metadata={"help": "Path to the dataset"}
+    )
+
+    config_path: Optional[str] = field(
+        default='.', metadata={"help": "Path to the dataset"}
+    )
     cache_dir: Optional[str] = field(
         default='.', metadata={"help": "Path to the cache"}
     )
@@ -67,9 +75,9 @@ def main():
     # Set seed before initializing model.
     set_seed(training_args.seed)
 
-    config = AlbertConfig.from_pretrained('albert-base-v2')
+    config = AlbertConfig.from_pretrained(dataset_args.config_path, cache_dir=dataset_args.cache_dir)
 
-    tokenizer = AlbertTokenizerFast.from_pretrained('albert-base-v2')
+    tokenizer = AlbertTokenizerFast.from_pretrained(dataset_args.tokenizer_path, cache_dir=dataset_args.cache_dir)
 
     model = AlbertForMaskedLM(config)
 
