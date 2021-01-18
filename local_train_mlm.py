@@ -1,13 +1,12 @@
 import logging
 import os
 from dataclasses import dataclass, field
-from typing import Optional
-from multiprocessing import cpu_count
 from pathlib import Path
+from typing import Optional
 
 import transformers
 from apex.optimizers import FusedLAMB
-from datasets import load_dataset, load_from_disk
+from datasets import load_from_disk
 from transformers import DataCollatorForLanguageModeling, HfArgumentParser, Trainer, TrainingArguments, set_seed, \
     AlbertTokenizerFast, AlbertConfig, AlbertForMaskedLM
 from transformers.optimization import get_linear_schedule_with_warmup
@@ -47,10 +46,6 @@ class DatasetArguments:
 
 
 def main():
-    # See all possible arguments in src/transformers/training_args.py
-    # or by passing the --help flag to this script.
-    # We now keep distinct sets of args, for a cleaner separation of concerns.
-
     parser = HfArgumentParser((TrainingArguments, DatasetArguments))
     training_args, dataset_args = parser.parse_args_into_dataclasses()
 
@@ -84,34 +79,9 @@ def main():
 
     model.resize_token_embeddings(len(tokenizer))
 
-    tokenized_dataset_path = Path(dataset_args.dataset_path) / 'albert_tokenized_wikitext'
+    tokenized_dataset_path = Path(dataset_args.dataset_path)
 
-    if not tokenized_dataset_path.exists():
-        wikitext = load_dataset('wikitext', 'wikitext-103-v1', cache_dir=dataset_args.cache_dir)
-
-        def tokenize_function(examples):
-            # Remove empty lines
-            examples["text"] = [line for line in examples["text"] if len(line) > 0 and not line.isspace()]
-            return tokenizer(
-                examples["text"],
-                padding=False,
-                truncation=True,
-                max_length=128,
-                # We use this option because DataCollatorForLanguageModeling (see below) is more efficient when it
-                # receives the `special_tokens_mask`.
-                return_special_tokens_mask=True,
-            )
-
-        tokenized_datasets = wikitext.map(
-            tokenize_function,
-            batched=True,
-            num_proc=cpu_count(),
-            remove_columns=["text"],
-        )
-
-        tokenized_datasets.save_to_disk(tokenized_dataset_path)
-    else:
-        tokenized_datasets = load_from_disk(tokenized_dataset_path)
+    tokenized_datasets = load_from_disk(tokenized_dataset_path)
 
     # Data collator
     # This one will take care of randomly masking the tokens.
@@ -150,9 +120,13 @@ def main():
         optimizers=(optimizer, lr_scheduler)
     )
 
+    # find latest checkpoint in output_dir
+    output_dir = Path(training_args.output_dir)
+    latest_checkpoint_dir = max(output_dir.iterdir(), default=None, key=os.path.getctime)
+
     # Training
     if training_args.do_train:
-        trainer.train(model_path=training_args.output_dir)
+        trainer.train(model_path=latest_checkpoint_dir)
 
 
 if __name__ == "__main__":
