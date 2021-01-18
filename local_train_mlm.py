@@ -142,7 +142,6 @@ def main():
 
     trainer = NirvanaCheckpointTrainer(
         model=model,
-        model_path=training_args.output_dir,
         args=training_args,
         train_dataset=tokenized_datasets["train"] if training_args.do_train else None,
         eval_dataset=tokenized_datasets["validation"] if training_args.do_eval else None,
@@ -153,7 +152,7 @@ def main():
 
     # Training
     if training_args.do_train:
-        trainer.train()
+        trainer.train(model_path=training_args.output_dir)
 
 
 if __name__ == "__main__":
