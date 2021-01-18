@@ -54,17 +54,6 @@ def main():
     parser = HfArgumentParser((TrainingArguments, DatasetArguments))
     training_args, dataset_args = parser.parse_args_into_dataclasses()
 
-    if (
-            os.path.exists(training_args.output_dir)
-            and os.listdir(training_args.output_dir)
-            and training_args.do_train
-            and not training_args.overwrite_output_dir
-    ):
-        raise ValueError(
-            f"Output directory ({training_args.output_dir}) already exists and is not empty."
-            "Use --overwrite_output_dir to overcome."
-        )
-
     # Setup logging
     logging.basicConfig(
         format="%(asctime)s - %(levelname)s - %(name)s -   %(message)s",
@@ -153,6 +142,7 @@ def main():
 
     trainer = NirvanaCheckpointTrainer(
         model=model,
+        model_path=training_args.output_dir,
         args=training_args,
         train_dataset=tokenized_datasets["train"] if training_args.do_train else None,
         eval_dataset=tokenized_datasets["validation"] if training_args.do_eval else None,
