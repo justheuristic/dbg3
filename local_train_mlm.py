@@ -16,6 +16,18 @@ from transformers.trainer_utils import is_main_process
 logger = logging.getLogger(__name__)
 
 
+class NirvanaCheckpointTrainer(Trainer):
+    def _save_checkpoint(self, model, trial, metrics=None):
+        super()._save_checkpoint(model, trial, metrics)
+        if self.is_world_process_zero():
+            try:
+                import nirvana_dl.snapshot as snap
+                snap.dump_snapshot()
+                logger.info('Checkpoint saved to snapshots.')
+            except Exception as e:
+                logger.info(f'Checkpoint not saved to snapshots: {e}')
+
+
 @dataclass
 class DatasetArguments:
     dataset_path: Optional[str] = field(
@@ -139,7 +151,7 @@ def main():
         optimizer, num_warmup_steps=training_args.warmup_steps, num_training_steps=training_args.max_steps
     )
 
-    trainer = Trainer(
+    trainer = NirvanaCheckpointTrainer(
         model=model,
         args=training_args,
         train_dataset=tokenized_datasets["train"] if training_args.do_train else None,
