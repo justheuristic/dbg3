@@ -75,9 +75,18 @@ def main():
 
     tokenizer = AlbertTokenizerFast.from_pretrained(dataset_args.tokenizer_path, cache_dir=dataset_args.cache_dir)
 
-    model = AlbertForMaskedLM(config)
+    # find latest checkpoint in output_dir
+    output_dir = Path(training_args.output_dir)
+    logger.info(f'Checkpoint dir {output_dir}, contents {output_dir.glob("checkpoint*")}')
+    latest_checkpoint_dir = max(output_dir.glob('checkpoint*'), default=None, key=os.path.getctime)
 
-    model.resize_token_embeddings(len(tokenizer))
+    if latest_checkpoint_dir is not None:
+        logger.info(f'Loading model from {latest_checkpoint_dir}')
+        model = AlbertForMaskedLM.from_pretrained(latest_checkpoint_dir)
+    else:
+        logger.info(f'Training from scratch')
+        model = AlbertForMaskedLM(config)
+        model.resize_token_embeddings(len(tokenizer))
 
     tokenized_dataset_path = Path(dataset_args.dataset_path)
 
@@ -119,10 +128,6 @@ def main():
         data_collator=data_collator,
         optimizers=(optimizer, lr_scheduler)
     )
-
-    # find latest checkpoint in output_dir
-    output_dir = Path(training_args.output_dir)
-    latest_checkpoint_dir = max(output_dir.iterdir(), default=None, key=os.path.getctime)
 
     # Training
     if training_args.do_train:
