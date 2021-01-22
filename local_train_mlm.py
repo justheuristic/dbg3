@@ -8,7 +8,7 @@ import transformers
 from apex.optimizers import FusedLAMB
 from datasets import load_from_disk
 from transformers import DataCollatorForLanguageModeling, HfArgumentParser, Trainer, TrainingArguments, set_seed, \
-    AlbertTokenizerFast, AlbertConfig, AlbertForMaskedLM
+    AlbertTokenizerFast, AlbertConfig, AlbertForPreTraining
 from transformers.optimization import get_linear_schedule_with_warmup
 from transformers.trainer_utils import is_main_process
 
@@ -77,15 +77,15 @@ def main():
 
     # find latest checkpoint in output_dir
     output_dir = Path(training_args.output_dir)
-    logger.info(f'Checkpoint dir {output_dir}, contents {output_dir.glob("checkpoint*")}')
+    logger.info(f'Checkpoint dir {output_dir}, contents {list(output_dir.glob("checkpoint*"))}')
     latest_checkpoint_dir = max(output_dir.glob('checkpoint*'), default=None, key=os.path.getctime)
 
     if latest_checkpoint_dir is not None:
         logger.info(f'Loading model from {latest_checkpoint_dir}')
-        model = AlbertForMaskedLM.from_pretrained(latest_checkpoint_dir)
+        model = AlbertForPreTraining.from_pretrained(latest_checkpoint_dir)
     else:
         logger.info(f'Training from scratch')
-        model = AlbertForMaskedLM(config)
+        model = AlbertForPreTraining(config)
         model.resize_token_embeddings(len(tokenizer))
 
     tokenized_dataset_path = Path(dataset_args.dataset_path)
