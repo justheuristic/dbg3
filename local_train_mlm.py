@@ -122,8 +122,7 @@ def main():
     trainer = NirvanaCheckpointTrainer(
         model=model,
         args=training_args,
-        train_dataset=tokenized_datasets["train"] if training_args.do_train else None,
-        eval_dataset=tokenized_datasets["validation"] if training_args.do_eval else None,
+        train_dataset=tokenized_datasets if training_args.do_train else None,
         tokenizer=tokenizer,
         data_collator=data_collator,
         optimizers=(optimizer, lr_scheduler)
