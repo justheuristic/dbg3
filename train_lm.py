@@ -7,7 +7,7 @@ import torch.nn as nn
 from datasets import load_from_disk
 from hivemind import RemoteSwitchMixtureOfExperts, DHT
 from torch_optimizer import Lamb
-from transformers import AdamW, get_linear_schedule_with_warmup, DataCollatorForLanguageModeling, HfArgumentParser, \
+from transformers import get_linear_schedule_with_warmup, DataCollatorForLanguageModeling, HfArgumentParser, \
     Trainer, TrainingArguments, AlbertTokenizerFast, AlbertConfig
 from transformers.models.albert.modeling_albert import AlbertEmbeddings, AlbertMLMHead, MaskedLMOutput
 from transformers.optimization import get_linear_schedule_with_warmup
@@ -24,13 +24,13 @@ class DatasetArguments:
 
 
 class TrainerModel(nn.Module):
-    def __init__(self, vocab_size, expert_dim, grid_size, dht, num_moe_blocks=1):
+    def __init__(self, config, vocab_size, expert_dim, grid_size, dht, num_moe_blocks=1):
         super().__init__()
-        self.config = AlbertConfig.from_pretrained('albert-base-v2')
+        self.config = config
         self.config.hidden_size = expert_dim
         self.config.vocab_size = vocab_size
-        self.embedding_hidden_mapping_in = nn.Linear(self.config.embedding_size, self.config.hidden_size)
 
+        self.embedding_hidden_mapping_in = nn.Linear(self.config.embedding_size, self.config.hidden_size)
         self.embeddings = AlbertEmbeddings(self.config)
 
         self.mixture = nn.ModuleList(
@@ -109,7 +109,8 @@ def main(dataset_args, args):
     dht = DHT(initial_peers=[args.init_peer], start=True, listen=False, max_workers=4, parallel_rpc=16,
               wait_timeout=0.1)
 
-    model = TrainerModel(tokenizer.vocab_size, args.hidden_dim, grid_size, dht)
+    config = AlbertConfig.from_pretrained(dataset_args.config_path, cache_dir=dataset_args.cache_dir)
+    model = TrainerModel(config, tokenizer.vocab_size, args.hidden_dim, grid_size, dht)
 
     no_decay = ["bias", "LayerNorm.weight"]
     optimizer_grouped_parameters = [
