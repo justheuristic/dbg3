@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """PyTorch ALBERT model. """
+from dataclasses import dataclass
+from typing import List, Optional, Tuple
 
 import torch
 import torch.nn as nn
@@ -44,6 +46,33 @@ _CONFIG_FOR_DOC = "AlbertConfig"
 _TOKENIZER_FOR_DOC = "AlbertTokenizer"
 
 
+@dataclass
+class MixtureModelOutput(BaseModelOutput):
+    last_hidden_state: torch.FloatTensor
+    balancing_losses: List[torch.FloatTensor] = None
+    hidden_states: Optional[Tuple[torch.FloatTensor]] = None
+    attentions: Optional[Tuple[torch.FloatTensor]] = None
+
+
+@dataclass
+class MixtureModelOutputWithPooling(BaseModelOutputWithPooling):
+    last_hidden_state: torch.FloatTensor
+    balancing_losses: List[List[torch.FloatTensor]] = None
+    pooler_output: torch.FloatTensor = None
+    hidden_states: Optional[Tuple[torch.FloatTensor]] = None
+    attentions: Optional[Tuple[torch.FloatTensor]] = None
+
+
+@dataclass
+class MixtureAlbertForPreTrainingOutput(AlbertForPreTrainingOutput):
+    loss: Optional[torch.FloatTensor] = None
+    balancing_loss: torch.FloatTensor = None
+    prediction_logits: torch.FloatTensor = None
+    sop_logits: torch.FloatTensor = None
+    hidden_states: Optional[Tuple[torch.FloatTensor]] = None
+    attentions: Optional[Tuple[torch.FloatTensor]] = None
+
+
 class AlbertLayer(nn.Module):
     def __init__(self, config, grid_size, dht):
         super().__init__()
@@ -56,9 +85,9 @@ class AlbertLayer(nn.Module):
 
         self.ffn_mixture = RemoteSwitchMixtureOfExperts(in_features=config.hidden_size, grid_size=grid_size,
                                                         dht=dht,
-                                                        k_best=1, k_min=0, forward_timeout=2,
-                                                        backward_timeout=2,
-                                                        timeout_after_k_min=1, detect_anomalies=True,
+                                                        k_best=1, k_min=0, forward_timeout=3,
+                                                        backward_timeout=3,
+                                                        timeout_after_k_min=3, detect_anomalies=True,
                                                         uid_prefix='expert.')
 
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
@@ -67,13 +96,17 @@ class AlbertLayer(nn.Module):
             self, hidden_states, attention_mask=None, head_mask=None, output_attentions=False,
             output_hidden_states=False
     ):
+        batch_size, seq_len, hidden_size = hidden_states.size()
+
         attention_output = self.attention(hidden_states, attention_mask, head_mask, output_attentions)
 
-        ffn_output = self.ffn_mixture(attention_output[0])
+        output_for_ffn = attention_output[0].view(batch_size * seq_len, self.config.hidden_size)
+        ffn_output, balancing_loss = self.ffn_mixture(output_for_ffn)
+        ffn_output = ffn_output.view(batch_size, seq_len, self.config.hidden_size)
 
         hidden_states = self.full_layer_layer_norm(ffn_output + attention_output[0])
 
-        return (hidden_states,) + attention_output[1:]  # add attentions if we output them
+        return (hidden_states, balancing_loss) + attention_output[1:]  # add attentions if we output them
 
 
 class AlbertLayerGroup(nn.Module):
@@ -88,23 +121,27 @@ class AlbertLayerGroup(nn.Module):
     ):
         layer_hidden_states = ()
         layer_attentions = ()
+        layer_balancing_losses = []
 
         for layer_index, albert_layer in enumerate(self.albert_layers):
             layer_output = albert_layer(hidden_states, attention_mask, head_mask[layer_index], output_attentions)
             hidden_states = layer_output[0]
+            balancing_loss = layer_output[1]
 
             if output_attentions:
-                layer_attentions = layer_attentions + (layer_output[1],)
+                layer_attentions = layer_attentions + (layer_output[2],)
 
             if output_hidden_states:
                 layer_hidden_states = layer_hidden_states + (hidden_states,)
 
-        outputs = (hidden_states,)
+            layer_balancing_losses.append(balancing_loss)
+
+        outputs = (hidden_states, layer_balancing_losses)
         if output_hidden_states:
             outputs = outputs + (layer_hidden_states,)
         if output_attentions:
             outputs = outputs + (layer_attentions,)
-        return outputs  # last-layer hidden state, (layer hidden states), (layer attentions)
+        return outputs  # last-layer hidden state, (layer balancing losses), (layer hidden states), (layer attentions)
 
 
 class AlbertTransformer(nn.Module):
@@ -129,6 +166,7 @@ class AlbertTransformer(nn.Module):
 
         all_hidden_states = (hidden_states,) if output_hidden_states else None
         all_attentions = () if output_attentions else None
+        all_balancing_losses = []
 
         for i in range(self.config.num_hidden_layers):
             # Number of layers in a hidden group
@@ -145,6 +183,9 @@ class AlbertTransformer(nn.Module):
                 output_hidden_states,
             )
             hidden_states = layer_group_output[0]
+            layer_balancing_losses = layer_group_output[1]
+
+            all_balancing_losses.append(layer_balancing_losses)
 
             if output_attentions:
                 all_attentions = all_attentions + layer_group_output[-1]
@@ -153,9 +194,11 @@ class AlbertTransformer(nn.Module):
                 all_hidden_states = all_hidden_states + (hidden_states,)
 
         if not return_dict:
-            return tuple(v for v in [hidden_states, all_hidden_states, all_attentions] if v is not None)
-        return BaseModelOutput(
-            last_hidden_state=hidden_states, hidden_states=all_hidden_states, attentions=all_attentions
+            return tuple(v for v in [hidden_states, all_balancing_losses, all_hidden_states, all_attentions]
+                         if v is not None)
+        return MixtureModelOutput(
+            last_hidden_state=hidden_states, balancing_losses=all_balancing_losses, hidden_states=all_hidden_states,
+            attentions=all_attentions
         )
 
 
@@ -368,9 +411,10 @@ class AlbertModel(AlbertPreTrainedModel):
         if not return_dict:
             return (sequence_output, pooled_output) + encoder_outputs[1:]
 
-        return BaseModelOutputWithPooling(
+        return MixtureModelOutputWithPooling(
             last_hidden_state=sequence_output,
             pooler_output=pooled_output,
+            balancing_losses=encoder_outputs.balancing_losses,
             hidden_states=encoder_outputs.hidden_states,
             attentions=encoder_outputs.attentions,
         )
@@ -456,10 +500,15 @@ class AlbertForPreTraining(AlbertPreTrainedModel):
             return_dict=return_dict,
         )
 
-        sequence_output, pooled_output = outputs[:2]
+        sequence_output, pooled_output, balancing_losses = outputs[:3]
 
         prediction_scores = self.predictions(sequence_output)
         sop_scores = self.sop_classifier(pooled_output)
+
+        # sum for each layer group (different params), average inside each group (same params)
+        balancing_loss = torch.stack(
+            [torch.stack(balancing_per_group).mean() for balancing_per_group in balancing_losses]
+        ).sum()
 
         total_loss = None
         if labels is not None and sentence_order_label is not None:
@@ -469,11 +518,12 @@ class AlbertForPreTraining(AlbertPreTrainedModel):
             total_loss = masked_lm_loss + sentence_order_loss
 
         if not return_dict:
-            output = (prediction_scores, sop_scores) + outputs[2:]
+            output = (balancing_loss, prediction_scores, sop_scores) + outputs[3:]
             return ((total_loss,) + output) if total_loss is not None else output
 
-        return AlbertForPreTrainingOutput(
+        return MixtureAlbertForPreTrainingOutput(
             loss=total_loss,
+            balancing_loss=balancing_loss,
             prediction_logits=prediction_scores,
             sop_logits=sop_scores,
             hidden_states=outputs.hidden_states,

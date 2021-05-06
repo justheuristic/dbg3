@@ -2,13 +2,16 @@ import logging
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Dict
+from packaging import version
+import torch
 
 from datasets import load_from_disk
 from hivemind import DHT
 from torch_optimizer import Lamb
 from transformers import get_linear_schedule_with_warmup, DataCollatorForLanguageModeling, HfArgumentParser, \
-    Trainer, TrainingArguments, AlbertTokenizerFast, AlbertConfig
+    TrainingArguments, AlbertTokenizerFast, AlbertConfig
+from transformers.trainer import Trainer
 from transformers.optimization import get_linear_schedule_with_warmup
 
 from modeling_albert_moe import AlbertForPreTraining
@@ -27,6 +30,17 @@ class NirvanaCheckpointTrainer(Trainer):
             except Exception as e:
                 logger.info(f'Checkpoint not saved to snapshots: {e}')
 
+    def compute_loss(self, model, inputs):
+        outputs = model(**inputs)
+        # Save past state if it exists
+        # TODO: this needs to be fixed and made cleaner later.
+        if self.args.past_index >= 0:
+            self._past = outputs[self.args.past_index]
+        # We don't use .loss here since the model may return tuples instead of ModelOutput.
+        mlm_loss = outputs["loss"] if isinstance(outputs, dict) else outputs[0]
+        balancing_loss = outputs["balancing_loss"] if isinstance(outputs, dict) else outputs[1]
+        return mlm_loss + self.args.balancing_loss_weight * balancing_loss
+
 
 @dataclass
 class DatasetArguments:
@@ -34,6 +48,11 @@ class DatasetArguments:
     tokenizer_path: Optional[str] = field(default='.', metadata={"help": "Path to the dataset"})
     config_path: Optional[str] = field(default='.', metadata={"help": "Path to the dataset"})
     cache_dir: Optional[str] = field(default='.', metadata={"help": "Path to the cache"})
+
+
+@dataclass
+class MixtureTrainingArguments(TrainingArguments):
+    balancing_loss_weight: Optional[float] = field(default=1e-2)
 
 
 def main(dataset_args, training_args, args):
@@ -56,7 +75,7 @@ def main(dataset_args, training_args, args):
 
     if latest_checkpoint_dir is not None:
         logger.info(f'Loading model from {latest_checkpoint_dir}')
-        model = AlbertForPreTraining.from_pretrained(latest_checkpoint_dir, grid_size, dht)
+        model = AlbertForPreTraining.from_pretrained(latest_checkpoint_dir, grid_size=grid_size, dht=dht)
     else:
         logger.info(f'Training from scratch')
         model = AlbertForPreTraining(config, grid_size, dht)
@@ -98,11 +117,11 @@ def main(dataset_args, training_args, args):
         optimizers=(optimizer, lr_scheduler)
     )
 
-    trainer.train(model_path=latest_checkpoint_dir)
+    trainer.train(resume_from_checkpoint=latest_checkpoint_dir)
 
 
 if __name__ == '__main__':
-    parser = HfArgumentParser((DatasetArguments, TrainingArguments))
+    parser = HfArgumentParser((DatasetArguments, MixtureTrainingArguments))
     parser.add_argument('--grid-size', type=int, required=True)
     parser.add_argument('--lm', action='store_true')
     parser.add_argument('--init-peer', required=True)
