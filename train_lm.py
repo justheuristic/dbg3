@@ -63,8 +63,8 @@ def main(dataset_args, training_args, args):
     collator = DataCollatorForLanguageModeling(tokenizer, mlm=not args.lm)
 
     grid_size = (args.grid_size,)
-    dht = DHT(initial_peers=[args.init_peer], start=True, listen=False, max_workers=4, parallel_rpc=16,
-              wait_timeout=0.1)
+    dht = DHT(initial_peers=[args.init_peer], start=True, listen=False, max_workers=16, parallel_rpc=32,
+              wait_timeout=2)
 
     config = AlbertConfig.from_pretrained(dataset_args.config_path, cache_dir=dataset_args.cache_dir)
 
