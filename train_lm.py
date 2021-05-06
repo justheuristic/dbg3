@@ -36,7 +36,7 @@ class DatasetArguments:
     cache_dir: Optional[str] = field(default='.', metadata={"help": "Path to the cache"})
 
 
-def main(dataset_args, args):
+def main(dataset_args, training_args, args):
     tokenizer = AlbertTokenizerFast.from_pretrained(dataset_args.tokenizer_path, cache_dir=dataset_args.cache_dir)
 
     tokenized_datasets = load_from_disk(dataset_args.dataset_path)
