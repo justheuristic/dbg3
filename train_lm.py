@@ -1,9 +1,9 @@
 import logging
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
-import torch
 from datasets import load_from_disk
 from hivemind import DHT
 from torch_optimizer import Lamb
@@ -49,7 +49,18 @@ def main(dataset_args, training_args, args):
 
     config = AlbertConfig.from_pretrained(dataset_args.config_path, cache_dir=dataset_args.cache_dir)
 
-    model = AlbertForPreTraining(config, grid_size, dht)
+    # find latest checkpoint in output_dir
+    output_dir = Path(training_args.output_dir)
+    logger.info(f'Checkpoint dir {output_dir}, contents {list(output_dir.glob("checkpoint*"))}')
+    latest_checkpoint_dir = max(output_dir.glob('checkpoint*'), default=None, key=os.path.getctime)
+
+    if latest_checkpoint_dir is not None:
+        logger.info(f'Loading model from {latest_checkpoint_dir}')
+        model = AlbertForPreTraining.from_pretrained(latest_checkpoint_dir, grid_size, dht)
+    else:
+        logger.info(f'Training from scratch')
+        model = AlbertForPreTraining(config, grid_size, dht)
+        model.resize_token_embeddings(len(tokenizer))
 
     no_decay = ["bias", "LayerNorm.weight"]
     optimizer_grouped_parameters = [
@@ -78,13 +89,6 @@ def main(dataset_args, training_args, args):
         optimizer, num_warmup_steps=training_args.warmup_steps, num_training_steps=training_args.max_steps
     )
 
-    # TODO correct save/load
-    if args.restore_from_checkpoint is not None:
-        checkpoint_path = Path(args.restore_from_checkpoint) / 'pytorch_model.bin'
-        if checkpoint_path.exists():
-            model_checkpoint = torch.load(checkpoint_path)
-            model.load_state_dict(model_checkpoint)
-
     trainer = NirvanaCheckpointTrainer(
         model=model,
         args=training_args,
@@ -99,9 +103,9 @@ def main(dataset_args, training_args, args):
 
 if __name__ == '__main__':
     parser = HfArgumentParser((DatasetArguments, TrainingArguments))
-    parser.add_argument('--grid-size', type=int, default=8)
+    parser.add_argument('--grid-size', type=int, required=True)
     parser.add_argument('--lm', action='store_true')
-    parser.add_argument('--init-peer')
+    parser.add_argument('--init-peer', required=True)
 
     dataset_args, training_args, args = parser.parse_args_into_dataclasses()
     main(dataset_args, training_args, args)
