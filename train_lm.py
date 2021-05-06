@@ -98,7 +98,7 @@ def main(dataset_args, training_args, args):
         optimizers=(optimizer, lr_scheduler)
     )
 
-    trainer.train(args.restore_from_checkpoint)
+    trainer.train(model_path=latest_checkpoint_dir)
 
 
 if __name__ == '__main__':
