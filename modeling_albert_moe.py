@@ -45,7 +45,7 @@ _TOKENIZER_FOR_DOC = "AlbertTokenizer"
 
 
 class AlbertLayer(nn.Module):
-    def __init__(self, config, dht, grid_size):
+    def __init__(self, config, grid_size, dht):
         super().__init__()
 
         self.config = config
