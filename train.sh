@@ -1,5 +1,5 @@
 python3 train_lm.py \
-  --init-peer "$INIT_PEER" \
+  --initial_peers "$INIT_PEER" \
   --dataset_path "$INPUT_PATH"/data/albert_tokenized_bookcorpus_wiki/train \
   --cache_dir "$INPUT_PATH" \
   --config_path "$INPUT_PATH"/albert_config_xxlarge.json \
