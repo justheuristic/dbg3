@@ -66,11 +66,11 @@ class BaseTrainingArguments:
 @dataclass
 class AveragerArguments:
     averaging_expiration: float = field(
-        default=5.0,
+        default=50.0,
         metadata={"help": "Averaging group will wait for stragglers for at most this many seconds"}
     )
     averaging_timeout: float = field(
-        default=30.0,
+        default=300.0,
         metadata={"help": "Give up on averaging step after this many seconds"}
     )
     listen_on: str = field(
