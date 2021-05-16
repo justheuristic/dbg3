@@ -83,11 +83,11 @@ class AveragerArguments:
         metadata={"help": "Wait for at least this many seconds before fetching new collaboration state"}
     )
     max_refresh_period: float = field(
-        default=6000,
+        default=60,
         metadata={"help": "Wait for at most this many seconds before fetching new collaboration state"}
     )
     default_refresh_period: float = field(
-        default=3000,
+        default=30,
         metadata={"help": "Attempt to fetch collaboration state every this often until successful"}
     )
     expected_drift_peers: float = field(
