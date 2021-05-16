@@ -1,7 +1,7 @@
-from dataclasses import dataclass, field, asdict
-from typing import Optional, List
-from pathlib import Path
 import os
+from dataclasses import dataclass, field, asdict
+from pathlib import Path
+from typing import Optional, List
 
 from datasets import load_from_disk
 from hivemind import DHT, CollaborativeOptimizer
@@ -192,6 +192,7 @@ def main(dataset_args, training_args, collaboration_args, args):
             logger.info(f'Training from scratch')
             model = AlbertForPreTraining(config)
             model.resize_token_embeddings(len(tokenizer))
+    model.to(training_args.device)
 
     no_decay = ["bias", "LayerNorm.weight"]
     optimizer_grouped_parameters = [
