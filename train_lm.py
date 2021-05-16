@@ -66,11 +66,11 @@ class BaseTrainingArguments:
 @dataclass
 class AveragerArguments:
     averaging_expiration: float = field(
-        default=5000.0,
+        default=500.0,
         metadata={"help": "Averaging group will wait for stragglers for at most this many seconds"}
     )
     averaging_timeout: float = field(
-        default=3000.0,
+        default=300.0,
         metadata={"help": "Give up on averaging step after this many seconds"}
     )
     listen_on: str = field(
@@ -82,11 +82,11 @@ class AveragerArguments:
         metadata={"help": "Wait for at least this many seconds before fetching new collaboration state"}
     )
     max_refresh_period: float = field(
-        default=60000,
+        default=6000,
         metadata={"help": "Wait for at most this many seconds before fetching new collaboration state"}
     )
     default_refresh_period: float = field(
-        default=30000,
+        default=3000,
         metadata={"help": "Attempt to fetch collaboration state every this often until successful"}
     )
     expected_drift_peers: float = field(
@@ -106,7 +106,7 @@ class AveragerArguments:
         metadata={"help": "Maximum group size for all-reduce"}
     )
     metadata_expiration: float = field(
-        default=3000,
+        default=300,
         metadata={"help": "Peer's metadata will be removed if not updated in this many seconds"}
     )
 
@@ -114,7 +114,7 @@ class AveragerArguments:
 @dataclass
 class CollaborativeOptimizerArguments:
     target_batch_size: int = field(
-        default=4096,
+        default=128,
         metadata={"help": "Perform optimizer step after all peers collectively accumulate this many samples"}
     )
     client_mode: bool = field(
