@@ -11,6 +11,7 @@ from torch_optimizer import Lamb
 from transformers import get_linear_schedule_with_warmup, DataCollatorForLanguageModeling, HfArgumentParser, \
     TrainingArguments, AlbertTokenizerFast, AlbertConfig, AlbertForPreTraining
 from transformers.optimization import get_linear_schedule_with_warmup
+import torch
 
 from modeling_albert_moe import AlbertForPreTraining as MoEAlbertForPreTraining
 from trainer import NirvanaCheckpointTrainer
@@ -229,6 +230,7 @@ def main(dataset_args, training_args, collaboration_args, args):
         compression_type=CompressionType.Value(collaboration_args_dict.pop('compression')),
         batch_size_per_step=total_batch_size_per_step, throughput=collaboration_args_dict.pop('bandwidth'),
         target_batch_size=adjusted_target_batch_size, client_mode=collaboration_args_dict.pop('client_mode'),
+        accumulate_grads_on=torch.device('cpu'),
         verbose=True, start=True, **collaboration_args_dict
     )
 
