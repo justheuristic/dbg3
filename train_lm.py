@@ -67,11 +67,11 @@ class BaseTrainingArguments:
 @dataclass
 class AveragerArguments:
     averaging_expiration: float = field(
-        default=500.0,
+        default=600.0,
         metadata={"help": "Averaging group will wait for stragglers for at most this many seconds"}
     )
     averaging_timeout: float = field(
-        default=300.0,
+        default=600.0,
         metadata={"help": "Give up on averaging step after this many seconds"}
     )
     listen_on: str = field(
@@ -115,7 +115,7 @@ class AveragerArguments:
 @dataclass
 class CollaborativeOptimizerArguments:
     target_batch_size: int = field(
-        default=128,
+        default=4096,
         metadata={"help": "Perform optimizer step after all peers collectively accumulate this many samples"}
     )
     client_mode: bool = field(
