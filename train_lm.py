@@ -149,6 +149,7 @@ class CollaborationArguments(AveragerArguments, CollaborativeOptimizerArguments,
 
 @dataclass
 class MixtureTrainingArguments(TrainingArguments):
+    moe: bool = field(default=False)
     balancing_loss_weight: Optional[float] = field(default=1e-2)
 
 
@@ -175,7 +176,7 @@ def main(dataset_args, training_args, collaboration_args, args):
     logger.info(f'Checkpoint dir {output_dir}, contents {list(output_dir.glob("checkpoint*"))}')
     latest_checkpoint_dir = max(output_dir.glob('checkpoint*'), default=None, key=os.path.getctime)
 
-    if args.moe:
+    if training_args.moe:
         if latest_checkpoint_dir is not None:
             logger.info(f'Loading model from {latest_checkpoint_dir}')
             model = MoEAlbertForPreTraining.from_pretrained(latest_checkpoint_dir, grid_size=grid_size, dht=dht)
@@ -246,7 +247,6 @@ if __name__ == '__main__':
     parser = HfArgumentParser((DatasetArguments, MixtureTrainingArguments, CollaborationArguments))
     parser.add_argument('--grid-size', type=int, required=True)
     parser.add_argument('--lm', action='store_true')
-    parser.add_argument('--moe', action='store_true')
 
     dataset_args, training_args, collaboration_args, args = parser.parse_args_into_dataclasses()
     main(dataset_args, training_args, collaboration_args, args)

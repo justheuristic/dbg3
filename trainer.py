@@ -138,5 +138,8 @@ class NirvanaCheckpointTrainer(Trainer):
             self._past = outputs[self.args.past_index]
         # We don't use .loss here since the model may return tuples instead of ModelOutput.
         mlm_loss = outputs["loss"] if isinstance(outputs, dict) else outputs[0]
-        balancing_loss = outputs["balancing_loss"] if isinstance(outputs, dict) else outputs[1]
+        if self.args.moe:
+            balancing_loss = outputs["balancing_loss"] if isinstance(outputs, dict) else outputs[1]
+        else:
+            balancing_loss = 0
         return mlm_loss + self.args.balancing_loss_weight * balancing_loss
