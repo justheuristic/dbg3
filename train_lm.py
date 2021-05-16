@@ -9,10 +9,10 @@ from hivemind.utils import CompressionType, get_logger
 from torch.optim.lr_scheduler import _LRScheduler
 from torch_optimizer import Lamb
 from transformers import get_linear_schedule_with_warmup, DataCollatorForLanguageModeling, HfArgumentParser, \
-    TrainingArguments, AlbertTokenizerFast, AlbertConfig
+    TrainingArguments, AlbertTokenizerFast, AlbertConfig, AlbertForPreTraining
 from transformers.optimization import get_linear_schedule_with_warmup
 
-from modeling_albert_moe import AlbertForPreTraining
+from modeling_albert_moe import AlbertForPreTraining as MoEAlbertForPreTraining
 from trainer import NirvanaCheckpointTrainer
 
 logger = get_logger(__name__)
@@ -175,13 +175,22 @@ def main(dataset_args, training_args, collaboration_args, args):
     logger.info(f'Checkpoint dir {output_dir}, contents {list(output_dir.glob("checkpoint*"))}')
     latest_checkpoint_dir = max(output_dir.glob('checkpoint*'), default=None, key=os.path.getctime)
 
-    if latest_checkpoint_dir is not None:
-        logger.info(f'Loading model from {latest_checkpoint_dir}')
-        model = AlbertForPreTraining.from_pretrained(latest_checkpoint_dir, grid_size=grid_size, dht=dht)
+    if args.moe:
+        if latest_checkpoint_dir is not None:
+            logger.info(f'Loading model from {latest_checkpoint_dir}')
+            model = MoEAlbertForPreTraining.from_pretrained(latest_checkpoint_dir, grid_size=grid_size, dht=dht)
+        else:
+            logger.info(f'Training from scratch')
+            model = MoEAlbertForPreTraining(config, grid_size, dht)
+            model.resize_token_embeddings(len(tokenizer))
     else:
-        logger.info(f'Training from scratch')
-        model = AlbertForPreTraining(config, grid_size, dht)
-        model.resize_token_embeddings(len(tokenizer))
+        if latest_checkpoint_dir is not None:
+            logger.info(f'Loading model from {latest_checkpoint_dir}')
+            model = AlbertForPreTraining.from_pretrained(latest_checkpoint_dir)
+        else:
+            logger.info(f'Training from scratch')
+            model = AlbertForPreTraining(config)
+            model.resize_token_embeddings(len(tokenizer))
 
     no_decay = ["bias", "LayerNorm.weight"]
     optimizer_grouped_parameters = [
@@ -237,6 +246,7 @@ if __name__ == '__main__':
     parser = HfArgumentParser((DatasetArguments, MixtureTrainingArguments, CollaborationArguments))
     parser.add_argument('--grid-size', type=int, required=True)
     parser.add_argument('--lm', action='store_true')
+    parser.add_argument('--moe', action='store_true')
 
     dataset_args, training_args, collaboration_args, args = parser.parse_args_into_dataclasses()
     main(dataset_args, training_args, collaboration_args, args)
