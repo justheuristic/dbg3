@@ -107,7 +107,7 @@ class AveragerArguments:
         metadata={"help": "Maximum group size for all-reduce"}
     )
     metadata_expiration: float = field(
-        default=300,
+        default=600,
         metadata={"help": "Peer's metadata will be removed if not updated in this many seconds"}
     )
 
