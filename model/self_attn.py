@@ -8,7 +8,7 @@ class LeanAlbertAttention(nn.Module):
     def __init__(self, hidden_size: int, num_attention_heads: int,
                  attention_probs_dropout_prob: float = 0,
                  hidden_dropout_prob: float = 0,
-                 layer_norm_eps: float = 0.0):
+                 layer_norm_eps: float = 1e-5):
         """ Attention layer that does not hog GPU memory """
         super().__init__()
         assert hidden_size % num_attention_heads == 0
