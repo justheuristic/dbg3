@@ -11,11 +11,12 @@ class ReferenceFFN(nn.Module):
                  hidden_size: int,
                  intermediate_size: int,
                  activation=F.gelu,
+                 layer_norm_eps=1e-12,
                  dropout: float = 0.0):
         super().__init__()
         self.dense_i2h = nn.Linear(hidden_size, intermediate_size)
         self.dense_h2o = nn.Linear(intermediate_size, hidden_size)
-        self.layer_norm = nn.LayerNorm(hidden_size)
+        self.layer_norm = nn.LayerNorm(hidden_size, eps=layer_norm_eps)
         self.activation = activation
         self.dropout = dropout
 

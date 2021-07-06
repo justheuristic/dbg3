@@ -14,7 +14,7 @@ class LeanFFN(nn.Module):
                  hidden_size: int,
                  intermediate_size: int,
                  activation=F.gelu,
-                 layer_norm_eps: float = 1e-5,
+                 layer_norm_eps: float = 1e-12,
                  dropout: float = 0.0,
                  ):
         super().__init__()
