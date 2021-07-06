@@ -18,8 +18,8 @@ class LeanAlbertAttention(nn.Module):
         self.dense_qkv = nn.Linear(hidden_size, hidden_size * 3)
         self.dense_out = nn.Linear(hidden_size, hidden_size)
         self.layer_norm = nn.LayerNorm(hidden_size, eps=layer_norm_eps)
-        self.attention_dropout = nn.Dropout(attention_probs_dropout_prob, inplace=True)
-        self.output_dropout = nn.Dropout(hidden_dropout_prob, inplace=True)
+        self.attention_dropout = nn.Dropout(attention_probs_dropout_prob, inplace=False)
+        self.output_dropout = nn.Dropout(hidden_dropout_prob, inplace=False)
 
     # Copied from transformers.models.bert.modeling_bert.BertSelfAttention.transpose_for_scores
     def transpose_for_scores(self, x):
