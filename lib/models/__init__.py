@@ -1,1 +1,1 @@
-from lean_albert import *
+from .lean_albert import *
