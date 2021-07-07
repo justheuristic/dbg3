@@ -250,7 +250,8 @@ def main():
         start=True, initial_peers=collaboration_args_dict.pop('initial_peers'),
         listen=not collaboration_args_dict['client_mode'],
         listen_on=collaboration_args_dict.pop('dht_listen_on'),
-        endpoint=collaboration_args_dict.pop('endpoint'), record_validators=validators)
+        endpoint=collaboration_args_dict.pop('endpoint'),
+        record_validators=validators, max_workers=3)
 
     total_batch_size_per_step = training_args.per_device_train_batch_size * training_args.gradient_accumulation_steps
     if torch.cuda.device_count() != 0:
