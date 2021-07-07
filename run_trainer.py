@@ -79,11 +79,15 @@ class CPULamb(Lamb):
     def step(self, closure=None):
         #TODO better way: temporarily substitute params in self.param_groups, step, then memmove updates to gpu
         assert closure is None, "opt closure is not supported"
+        torch.cuda.synchronize()
+        torch.cuda.empty_cache()
         device_counts = Counter(p.device for p in self._module_to_offload.parameters())
         device, _ = device_counts.most_common(n=1)[0]
         self._module_to_offload.cpu()
         res = super().step()
         self._module_to_offload.to(device)
+        torch.cuda.synchronize()
+        torch.cuda.empty_cache()
         return res
 
 
