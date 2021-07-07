@@ -54,9 +54,7 @@ class LeanAlbertLayer(nn.Module):
                            layer_norm_eps=config.layer_norm_eps,
                            dropout=config.hidden_dropout_prob)
 
-    def forward(self, hidden_states, attention_mask=None, head_mask=None, output_attentions=False):
-        if head_mask:
-            raise NotImplementedError()
+    def forward(self, hidden_states, attention_mask=None, output_attentions=False):
         attention_output, *extras = self.attention(hidden_states, attention_mask, output_attentions)
         ffn_output = self.ffn(attention_output)
         return (ffn_output, attention_output, *extras)
@@ -68,8 +66,11 @@ class LeanAlbertLayerGroup(AlbertLayerGroup):
         self.albert_layers = nn.ModuleList([LeanAlbertLayer(config) for _ in range(config.inner_group_num)])
 
     def forward(
-        self, hidden_states, attention_mask=None, output_attentions=False, output_hidden_states=False
+        self, hidden_states, attention_mask=None, head_mask=None, output_attentions=False, output_hidden_states=False
     ):
+        if any(head_mask):
+            raise NotImplementedError(f"head mask was provided, but it is not supported")
+
         layer_hidden_states = ()
         layer_attentions = ()
 

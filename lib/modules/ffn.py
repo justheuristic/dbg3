@@ -25,6 +25,8 @@ class LeanFFN(nn.Module):
         self.dropout = dropout
 
     def forward(self, input):
+        qq = [            self.dense_i2h.weight, self.dense_i2h.bias,
+            self.dense_h2o.weight, self.dense_h2o.bias,]
         return self.layer_norm(_LeanFFN.apply(
             input,
             self.dense_i2h.weight, self.dense_i2h.bias,
@@ -56,21 +58,26 @@ class _LeanFFN(torch.autograd.Function):
         input, hid, i2h_weight, h2o_weight = ctx.saved_tensors
         torch.set_rng_state(ctx._cpu_rng_state)
         set_device_states(*ctx._device_rng_states)
+        with torch.cuda.amp.autocast(enabled=True):
+            input_2d = input.view(-1, input.shape[-1])
+            grad_output_2d = grad_output.view(-1, grad_output.shape[-1])
+            grad_hid_act = torch.mm(grad_output_2d, h2o_weight)
+            with torch.enable_grad():
+                hid.requires_grad_(True)
+                hid_act = ctx._activation(hid)
+                grad_hid, = torch.autograd.grad(hid_act, hid, grad_hid_act)
+                hid.requires_grad_(False)
 
-        input_2d = input.view(-1, input.shape[-1])
-        grad_output_2d = grad_output.view(-1, grad_output.shape[-1])
-        grad_hid_act = torch.mm(grad_output_2d, h2o_weight)
-        with torch.enable_grad():
-            hid.requires_grad_(True)
-            hid_act = ctx._activation(hid)
-            grad_hid, = torch.autograd.grad(hid_act, hid, grad_hid_act)
-            hid.requires_grad_(False)
-
-        with torch.no_grad():
-            grad_input_2d = torch.mm(grad_hid, i2h_weight) + grad_output_2d
-            grad_input = grad_input_2d.view(*grad_output.shape)
-            grad_i2h_weight = grad_hid.t().mm(input_2d)
-            grad_i2h_bias = grad_hid.sum(0)
-            grad_h2o_weight = grad_output_2d.t().mm(hid_act)
-            grad_h2o_bias = grad_output_2d.sum(0)
+            with torch.no_grad():
+                if ctx.needs_input_grad[0]:
+                    grad_input_2d = torch.mm(grad_hid, i2h_weight) + grad_output_2d
+                    grad_input = grad_input_2d.view(*grad_output.shape)
+                if ctx.needs_input_grad[1]:
+                    grad_i2h_weight = grad_hid.t().mm(input_2d)
+                if ctx.needs_input_grad[2]:
+                    grad_i2h_bias = grad_hid.sum(0)
+                if ctx.needs_input_grad[3]:
+                    grad_h2o_weight = grad_output_2d.t().mm(hid_act)
+                if ctx.needs_input_grad[4]:
+                    grad_h2o_bias = grad_output_2d.sum(0)
         return grad_input, grad_i2h_weight, grad_i2h_bias, grad_h2o_weight, grad_h2o_bias, None, None, None
