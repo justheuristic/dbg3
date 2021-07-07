@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from model.ffn import LeanFFN
+from lib.modules.ffn import LeanFFN
 
 
 class ReferenceFFN(nn.Module):
