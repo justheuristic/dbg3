@@ -22,7 +22,8 @@ from transformers.modeling_utils import (
 from transformers.models.albert import AlbertConfig
 from transformers.models.albert.modeling_albert import (
     load_tf_weights_in_albert, AlbertEmbeddings, AlbertMLMHead,
-    AlbertSOPHead, ALBERT_START_DOCSTRING, ACT2FN, AlbertLayerGroup, AlbertTransformer, AlbertForPreTraining
+    AlbertSOPHead, ALBERT_START_DOCSTRING, ACT2FN, AlbertLayerGroup, AlbertTransformer, AlbertForPreTraining,
+    AlbertModel
 )
 
 from transformers.utils import logging
@@ -126,13 +127,9 @@ class AlbertPreTrainedModel(PreTrainedModel):
     "The bare ALBERT Model transformer outputting raw hidden-states without any specific head on top.",
     ALBERT_START_DOCSTRING,
 )
-class LeanAlbertModel(AlbertPreTrainedModel):
-    config_class = AlbertConfig
-    load_tf_weights = load_tf_weights_in_albert
-    base_model_prefix = "albert"
-
+class LeanAlbertModel(AlbertModel):
     def __init__(self, config: AlbertConfig, add_pooling_layer=True):
-        super().__init__(config)
+        AlbertPreTrainedModel.__init__(self, config)
 
         self.config = config
         self.embeddings = AlbertEmbeddings(config)
