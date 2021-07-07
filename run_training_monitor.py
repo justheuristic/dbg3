@@ -90,10 +90,7 @@ class CheckpointHandler:
             },
         ]
 
-        opt = Lamb(
-            optimizer_grouped_parameters,
-            lr=0.00176, weight_decay=0.01, clamp_value=10000.0, debias=True,
-        )
+        opt = Lamb(optimizer_grouped_parameters, lr=0.0, weight_decay=0.0, clamp_value=10000.0, debias=True)
 
         adjusted_target_batch_size = collab_optimizer_args.target_batch_size - collab_optimizer_args.batch_size_lead
 
