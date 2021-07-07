@@ -118,7 +118,7 @@ class DatasetArguments:
         metadata={"help": "Path to the model config"}
     )
     cache_dir: Optional[str] = field(
-        default='data',
+        default='cache',
         metadata={"help": "Path to the cache"}
     )
 
