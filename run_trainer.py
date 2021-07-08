@@ -79,15 +79,11 @@ class CPULamb(Lamb):
     def step(self, closure=None):
         #TODO better way: temporarily substitute params in self.param_groups, step, then memmove updates to gpu
         assert closure is None, "opt closure is not supported"
-        torch.cuda.synchronize()
-        torch.cuda.empty_cache()
         device_counts = Counter(p.device for p in self._module_to_offload.parameters())
-        device, _ = device_counts.most_common(n=1)[0]
+        main_device, _ = device_counts.most_common(n=1)[0]
         self._module_to_offload.cpu()
         res = super().step()
-        self._module_to_offload.to(device)
-        torch.cuda.synchronize()
-        torch.cuda.empty_cache()
+        self._module_to_offload.to(main_device)
         return res
 
 
@@ -223,6 +219,18 @@ class NoOpScheduler(LRSchedulerBase):
         logger.debug("Called NoOpScheduler.load_state_dict")
 
 
+class DisableZeroGrad(nn.Module):
+    def __init__(self, module):
+        super().__init__()
+        self.module = module
+
+    def forward(self, *args, **kwargs):
+        return self.module.forward(*args, **kwargs)
+
+    def zero_grad(self, set_to_none: bool = False) -> None:
+        logger.debug("Successfully bypassed zero_grad")
+
+
 def main():
     parser = HfArgumentParser((AlbertTrainingArguments, DatasetArguments, CollaborationArguments))
     training_args, dataset_args, collaboration_args = parser.parse_args_into_dataclasses()
@@ -269,7 +277,7 @@ def main():
         compression_type=hivemind.utils.CompressionType.Value(collaboration_args_dict.pop('compression')),
         batch_size_per_step=total_batch_size_per_step, throughput=collaboration_args_dict.pop('bandwidth'),
         target_batch_size=adjusted_target_batch_size, client_mode=collaboration_args_dict.pop('client_mode'),
-        verbose=True, start=True, **collaboration_args_dict
+        verbose=True, start=True, reuse_grad_buffers=True, **collaboration_args_dict
     )
 
     class TrainerWithIndependentShuffling(Trainer):
@@ -277,6 +285,9 @@ def main():
             """ Shuffle data independently for each peer to avoid duplicating batches [important for quality] """
             torch.manual_seed(hash(local_public_key))
             return super().get_train_dataloader()
+
+        def _wrap_model(self, model, training=True):
+            return DisableZeroGrad(super()._wrap_model(model, training=training))
 
     trainer = TrainerWithIndependentShuffling(
         model=model, args=training_args, tokenizer=tokenizer, data_collator=data_collator,
