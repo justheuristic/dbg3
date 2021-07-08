@@ -89,7 +89,7 @@ class OffloadOptimizer(OptimizerWrapper):
             return self.optim.state_dict()
 
     def load_state_dict(self, state_dict: dict) -> None:
-        with self._replace_params(self.param_groups,
+        with self._replace_params(self.param_groups, self.offload_params_per_group,
                                   sync_params_before=False, sync_grads_before=False,
                                   sync_params_after=True, sync_grads_after=self.full_sync):
             return self.optim.load_state_dict(state_dict)
