@@ -20,9 +20,10 @@ class OffloadOptimizer(OptimizerWrapper):
             param_groups = [{'params': param_groups}]
 
         with torch.no_grad():
-            self.offload_params_per_group = tuple([
-                torch.nn.Parameter(torch.empty_like(param, device=offload_device), requires_grad=param.requires_grad)
-                for param in group["params"]] for group in param_groups)
+            self.original_params_per_group = tuple(group["params"] for group in param_groups)
+            self.offload_params_per_group = tuple(
+                [torch.nn.Parameter(torch.empty_like(param, device=offload_device), requires_grad=param.requires_grad)
+                 for param in group["params"]] for group in param_groups)
 
             for group, offload_params in zip(param_groups, self.offload_params_per_group):
                 for param, offload_param in zip(group['params'], offload_params):
@@ -32,28 +33,25 @@ class OffloadOptimizer(OptimizerWrapper):
                     if param.grad is not None:
                         offload_param.grad.copy_(param.grad, non_blocking=True)
 
+        super().__init__(optim_cls(param_groups, *args, **kwargs))
         self.full_sync = full_sync
-        with self._replace_params(param_groups,
-                                  sync_params_before=False, sync_grads_before=False,
-                                  sync_params_after=True, sync_grads_after=full_sync):
-            super().__init__(optim_cls(param_groups, *args, **kwargs))
 
     @contextlib.contextmanager
-    def _replace_params(self, param_groups, *,
+    def _replace_params(self, param_groups, replacement_params_per_group, *,
                         sync_params_before: bool, sync_grads_before: bool,
-                        sync_params_after: bool, sync_grads_after:bool):
-        assert len(param_groups) == len(self.offload_params_per_group)
+                        sync_params_after: bool, sync_grads_after: bool):
+        assert len(param_groups) == len(replacement_params_per_group)
         normal_params_per_group = [group["params"] for group in param_groups]
         try:
             with torch.no_grad():
-                for normal_params, offload_params in zip(normal_params_per_group, self.offload_params_per_group):
+                for normal_params, offload_params in zip(normal_params_per_group, replacement_params_per_group):
                     for param, offload_param in zip(normal_params, offload_params):
                         if sync_params_before:
                             offload_param.copy_(param, non_blocking=True)
                         if sync_grads_before and param.grad is not None:
                             offload_param.grad.copy_(param.grad, non_blocking=True)
 
-            for group, offload_params in zip(param_groups, self.offload_params_per_group):
+            for group, offload_params in zip(param_groups, replacement_params_per_group):
                 group["params"] = offload_params
             yield param_groups
         finally:
@@ -73,7 +71,7 @@ class OffloadOptimizer(OptimizerWrapper):
 
     def step(self, closure=None, *args, **kwargs):
         assert closure is None, "closure not supported in cpu offload mode"
-        with self._replace_params(self.param_groups,
+        with self._replace_params(self.param_groups, self.offload_params_per_group,
                                   sync_params_before=self.full_sync, sync_grads_before=True,
                                   sync_params_after=True, sync_grads_after=self.full_sync):
             return self.optim.step(*args, **kwargs)
