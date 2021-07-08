@@ -21,7 +21,7 @@ class OffloadOptimizer(OptimizerWrapper):
         with torch.no_grad():
             self.params_offload = tuple(torch.nn.Parameter(torch.empty_like(p, device=offload_device),
                                                            requires_grad=p.requires_grad) for p in self.params_main)
-            for param_main, param_offload in self.params_offload:
+            for param_main, param_offload in zip(self.params_main, self.params_offload):
                 param_offload.copy_(param_main, non_blocking=True)
                 if param_offload.grad is None:
                     param_offload.grad = torch.zeros_like(param_offload)
