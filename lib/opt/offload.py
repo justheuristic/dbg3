@@ -1,9 +1,7 @@
 import contextlib
-import math
 from typing import Type, Iterable, Dict, Union
 
 import torch
-from hivemind import nested_map
 
 from .wrapper import OptimizerWrapper
 
@@ -41,30 +39,30 @@ class OffloadOptimizer(OptimizerWrapper):
                         sync_params_before: bool, sync_grads_before: bool,
                         sync_params_after: bool, sync_grads_after: bool):
         assert len(param_groups) == len(replacement_params_per_group)
-        normal_params_per_group = [group["params"] for group in param_groups]
+        original_params_per_group = [group["params"] for group in param_groups]
         try:
             with torch.no_grad():
-                for normal_params, offload_params in zip(normal_params_per_group, replacement_params_per_group):
-                    for param, offload_param in zip(normal_params, offload_params):
+                for original_params, replacement_params in zip(original_params_per_group, replacement_params_per_group):
+                    for original_param, replacement_param in zip(original_params, replacement_params):
                         if sync_params_before:
-                            offload_param.copy_(param, non_blocking=True)
-                        if sync_grads_before and param.grad is not None:
-                            offload_param.grad.copy_(param.grad, non_blocking=True)
+                            replacement_param.copy_(original_param, non_blocking=True)
+                        if sync_grads_before and original_param.grad is not None:
+                            replacement_param.grad.copy_(original_param.grad, non_blocking=True)
 
-            for group, offload_params in zip(param_groups, replacement_params_per_group):
-                group["params"] = offload_params
+            for group, replacement_params in zip(param_groups, replacement_params_per_group):
+                group["params"] = replacement_params
             yield param_groups
         finally:
-            for group, normal_params in zip(param_groups, normal_params_per_group):
-                group["params"] = normal_params
+            for group, original_params in zip(param_groups, original_params_per_group):
+                group["params"] = original_params
 
             with torch.no_grad():
-                for normal_params, offload_params in zip(normal_params_per_group, replacement_params_per_group):
-                    for param, offload_param in zip(normal_params, offload_params):
+                for original_params, replacement_params in zip(original_params_per_group, replacement_params_per_group):
+                    for original_param, replacement_param in zip(original_params, replacement_params):
                         if sync_params_after:
-                            param.copy_(offload_param, non_blocking=True)
-                        if sync_grads_after and param.grad is not None:
-                            param.grad.copy_(offload_param.grad)
+                            original_param.copy_(replacement_param, non_blocking=True)
+                        if sync_grads_after and original_param.grad is not None:
+                            original_param.grad.copy_(replacement_param.grad)
 
     def add_param_group(self, param_group: dict) -> None:
         raise NotImplementedError(f"{self.__class__.__name__} does not support add_param_group.")
@@ -91,7 +89,7 @@ class OffloadOptimizer(OptimizerWrapper):
             return self.optim.state_dict()
 
     def load_state_dict(self, state_dict: dict) -> None:
-        with self._replace_params(self.param_groups, self.offload_params_per_group,
+        with self._replace_params(self.param_groups,
                                   sync_params_before=False, sync_grads_before=False,
                                   sync_params_after=True, sync_grads_after=self.full_sync):
             return self.optim.load_state_dict(state_dict)
