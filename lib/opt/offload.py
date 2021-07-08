@@ -22,18 +22,20 @@ class OffloadOptimizer(OptimizerWrapper):
             param_groups_offload = nested_map(lambda p: (
                     torch.nn.Parameter(torch.empty_like(p, device=offload_device), requires_grad=p.requires_grad)
                     if isinstance(p, torch.nn.Parameter) else p), param_groups)
-            for param_main, param_offload in zip(param_groups, param_groups_offload):
-                param_offload.copy_(param_main, non_blocking=True)
-                if param_offload.grad is None:
-                    param_offload.grad = torch.zeros_like(param_offload)
+
+            for group, offload_group in zip(param_groups, param_groups_offload):
+                for param, offload_param in zip(group['params'], param_groups_offload['params']):
+                    offload_param.copy_(param, non_blocking=True)
+                    if offload_param.grad is None:
+                        offload_param.grad = torch.zeros_like(offload_param)
         super().__init__(optim_cls(param_groups_offload, *args, **kwargs))
 
     @property
     def param_groups(self):
         assert len(self.param_groups_main) == len(self.optim.param_groups)
         merged_param_groups = []
-        for main_pg, offload_pg in zip(self.param_groups_main, self.optim.param_groups):
-            merged_param_groups.append(dict(offload_pg, **main_pg))  # override parameters
+        for group, offload_group in zip(self.param_groups_main, self.optim.param_groups):
+            merged_param_groups.append(dict(offload_group, **group))  # override parameters
         return merged_param_groups
 
     def add_param_group(self, param_group: dict) -> None:
