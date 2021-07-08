@@ -39,5 +39,8 @@ class OptimizerWrapper(torch.optim.Optimizer):
     def zero_grad(self, *args, **kwargs):
         return self.optim.zero_grad(*args, **kwargs)
 
+    def param_groups(self):
+        return self.optim.param_groups
+
     def add_param_group(self, param_group: dict) -> None:
         return self.optim.add_param_group(param_group)

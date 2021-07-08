@@ -29,7 +29,11 @@ class OffloadOptimizer(OptimizerWrapper):
 
     @property
     def param_groups(self):
-        return self.param_groups_main
+        assert len(self.params_main) == len(self.optim.param_groups)
+        merged_param_groups = []
+        for main_pg, offload_pg in zip(self.param_groups_main, self.optim.param_groups):
+            merged_param_groups.append(dict(offload_pg, **main_pg))  # override parameters
+        return merged_param_groups
 
     def add_param_group(self, param_group: dict) -> None:
         raise NotImplementedError(f"{self.__class__.__name__} does not support add_param_group.")
