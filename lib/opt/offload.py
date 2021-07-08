@@ -85,3 +85,15 @@ class OffloadOptimizer(OptimizerWrapper):
                                   sync_params_before=self.full_sync, sync_grads_before=self.full_sync,
                                   sync_params_after=self.full_sync, sync_grads_after=self.full_sync):
             return super().zero_grad(*args, set_to_none=False, **kwargs)
+
+    def state_dict(self):
+        with self._replace_params(self.param_groups,
+                                  sync_params_before=self.full_sync, sync_grads_before=self.full_sync,
+                                  sync_params_after=False, sync_grads_after=False):
+            return self.optim.state_dict()
+
+    def load_state_dict(self, state_dict: dict) -> None:
+        with self._replace_params(self.param_groups,
+                                  sync_params_before=False, sync_grads_before=False,
+                                  sync_params_after=True, sync_grads_after=self.full_sync):
+            return self.optim.load_state_dict(state_dict)
