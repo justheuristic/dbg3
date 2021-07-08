@@ -222,7 +222,7 @@ class MonkeyPatched(nn.Module):
             self.module.zero_grad()
 
     def clip_grad_norm_(self, *args, **kwargs):
-        print("IGNORED clip_grad_norm_")
+        """ ignore clip_grad_norm on each step, clip in optimizer instead """
 
 
 class ClippedLamb(Lamb):
