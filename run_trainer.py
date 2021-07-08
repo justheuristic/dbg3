@@ -2,6 +2,7 @@
 
 import logging
 import os
+import pickle
 from collections import Counter
 from dataclasses import asdict
 from pathlib import Path
@@ -107,7 +108,7 @@ def get_optimizer_and_scheduler(training_args, model):
 class CollaborativeCallback(transformers.TrainerCallback):
     def __init__(self, dht: hivemind.DHT, optimizer: hivemind.CollaborativeOptimizer,
                  model: torch.nn.Module, local_public_key: bytes, statistics_expiration: float,
-                 backup_path: str, backup_every_steps: int = 10):
+                 backup_every_steps: int = 10):
         super().__init__()
         self.model = model
         self.dht, self.collaborative_optimizer = dht, optimizer
@@ -118,9 +119,9 @@ class CollaborativeCallback(transformers.TrainerCallback):
         self.steps = 0
         self.loss = 0
         self.total_samples_processed = 0
-        self.backup_path = backup_path
         self.backup_every_steps = backup_every_steps
-        self.backup_state()
+        self.backup = self.backup_state()
+
 
     def on_train_begin(self, args: TrainingArguments, state: transformers.TrainerState,
                        control: transformers.TrainerControl, **kwargs):
@@ -132,7 +133,7 @@ class CollaborativeCallback(transformers.TrainerCallback):
         control.should_log = True
         if not self.params_are_finite():
             logger.warning("Found invalid grads, reloading model from saved state")
-            self.restore_from_backup()
+            self.restore_from_backup(self.backup)
             return control
 
         if state.log_history:
@@ -161,7 +162,7 @@ class CollaborativeCallback(transformers.TrainerCallback):
                                    expiration_time=hivemind.get_dht_time() + self.statistics_expiration,
                                    return_future=True)
 
-                self.backup_state()
+                self.backup = self.backup_state()
 
         self.samples = self.collaborative_optimizer.local_samples_accumulated
 
@@ -175,15 +176,13 @@ class CollaborativeCallback(transformers.TrainerCallback):
         return True
 
     @torch.no_grad()
-    def backup_state(self) -> Dict[str, Any]:
-        torch.save({
-            'model': self.model.state_dict(),
-            'opt': self.collaborative_optimizer.opt.state_dict()
-        }, self.backup_path)
+    def backup_state(self) -> Any:
+        return pickle.dumps({'model': self.model.state_dict(),
+                             'opt': self.collaborative_optimizer.opt.state_dict()})
 
     @torch.no_grad()
-    def restore_from_backup(self):
-        state = torch.load(self.backup_path)
+    def restore_from_backup(self, backup):
+        state = pickle.loads(self.backup)
         self.model.load_state_dict(state['model'])
         self.collaborative_optimizer.opt.load_state_dict(state['opt'])
 
@@ -284,11 +283,7 @@ def main():
         train_dataset=tokenized_datasets["train"] if training_args.do_train else None,
         eval_dataset=tokenized_datasets["validation"] if training_args.do_eval else None,
         optimizers=(collaborative_optimizer, NoOpScheduler(collaborative_optimizer)),
-        callbacks=[CollaborativeCallback(
-            dht, collaborative_optimizer, model, local_public_key, statistics_expiration,
-            backup_path=os.path.join(dataset_args.cache_dir, "hivemind_backup.pth"),
-            backup_every_steps=10,
-        )]
+        callbacks=[CollaborativeCallback(dht, collaborative_optimizer, model, local_public_key, statistics_expiration)]
     )
     trainer.remove_callback(transformers.trainer_callback.PrinterCallback)
     trainer.remove_callback(transformers.trainer_callback.ProgressCallback)
