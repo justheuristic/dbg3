@@ -9,7 +9,7 @@ from .wrapper import OptimizerWrapper
 class OffloadOptimizer(OptimizerWrapper):
     r""" A wrapper that stores optimizer statistics and performs updates on the offloaded device (e.g. CPU RAM). """
 
-    def __init__(self, param_groups: Union[Iterable[torch.nn.Parameter], Dict],
+    def __init__(self, param_groups: Union[Iterable[torch.nn.Parameter], Iterable[Dict]],
                  optim_cls: Type[torch.optim.Optimizer], *args, offload_device=torch.device('cpu'), **kwargs):
         if not isinstance(param_groups[0], dict):
             param_groups = [{'params': param_groups}]
