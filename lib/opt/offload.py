@@ -24,7 +24,7 @@ class OffloadOptimizer(OptimizerWrapper):
                     if isinstance(p, torch.nn.Parameter) else p), param_groups)
 
             for group, offload_group in zip(param_groups, param_groups_offload):
-                for param, offload_param in zip(group['params'], param_groups_offload['params']):
+                for param, offload_param in zip(group['params'], offload_group['params']):
                     offload_param.copy_(param, non_blocking=True)
                     if offload_param.grad is None:
                         offload_param.grad = torch.zeros_like(offload_param)
