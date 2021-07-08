@@ -2,6 +2,7 @@ import math
 from typing import Type, Iterable, Dict, Union
 
 import torch
+from hivemind import nested_map
 
 from .wrapper import OptimizerWrapper
 
@@ -18,8 +19,9 @@ class OffloadOptimizer(OptimizerWrapper):
         self.offload_device = offload_device
         self.param_groups_main = param_groups
         with torch.no_grad():
-            param_groups_offload = tuple(torch.nn.Parameter(
-                torch.empty_like(p, device=offload_device), requires_grad=p.requires_grad) for p in param_groups)
+            param_groups_offload = nested_map(lambda p: (
+                    torch.nn.Parameter(torch.empty_like(p, device=offload_device), requires_grad=p.requires_grad)
+                    if isinstance(p, torch.nn.Parameter) else p), param_groups)
             for param_main, param_offload in zip(param_groups, param_groups_offload):
                 param_offload.copy_(param_main, non_blocking=True)
                 if param_offload.grad is None:
@@ -61,7 +63,7 @@ class OffloadOptimizer(OptimizerWrapper):
     def zero_grad(self, set_to_none: bool = False, *args, **kwargs):
         with torch.no_grad():
             for group in self.param_groups_main:
-                for param in group:
+                for param in group['params']:
                     if param.grad is not None:
                         if set_to_none:
                             param.grad = None
