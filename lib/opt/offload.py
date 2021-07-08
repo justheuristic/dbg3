@@ -1,5 +1,5 @@
 import contextlib
-from typing import Type, Iterable, Dict, Union
+from typing import Type, Iterable, Dict, Union, Optional
 
 import torch
 
@@ -11,8 +11,8 @@ class OffloadOptimizer(OptimizerWrapper):
 
     def __init__(
             self, param_groups: Union[Iterable[torch.nn.Parameter], Iterable[Dict]],
-            optim_cls: Type[torch.optim.Optimizer], *args, full_sync: bool = True,
-            offload_device=torch.device('cpu'), **kwargs):
+            optim_cls: Type[torch.optim.Optimizer],  *args, full_sync: bool = True,
+            offload_device=torch.device('cpu'), offload_dtype: Optional[torch.dtype] = None, **kwargs):
         param_groups = list(param_groups)
         if not isinstance(param_groups[0], dict):
             param_groups = [{'params': param_groups}]
@@ -21,7 +21,8 @@ class OffloadOptimizer(OptimizerWrapper):
 
         with torch.no_grad():
             self.offload_params_by_group = tuple(
-                [torch.nn.Parameter(torch.empty_like(param, device=offload_device), requires_grad=param.requires_grad)
+                [torch.nn.Parameter(torch.empty_like(param, device=offload_device, dtype=offload_dtype),
+                                    requires_grad=param.requires_grad)
                  for param in group["params"]] for group in param_groups)
 
             for group, offload_params in zip(param_groups, self.offload_params_by_group):

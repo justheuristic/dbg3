@@ -93,6 +93,7 @@ def get_optimizer_and_scheduler(training_args, model):
         eps=training_args.adam_epsilon,
         weight_decay=training_args.weight_decay,
         clamp_value=training_args.clamp_value,
+        offload_dtype=torch.float32,
         debias=True,
     )
 
