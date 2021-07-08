@@ -19,10 +19,12 @@ class OffloadOptimizer(OptimizerWrapper):
         self.param_groups_main = param_groups
         self.params_main = tuple(param for group in param_groups for param in group['params'])
         with torch.no_grad():
-            self.params_offload = tuple(p.to(offload_device) for p in self.params_main)
-            for param in self.params_offload:
-                if param.grad is None:
-                    param.grad = torch.zeros_like(param)
+            self.params_offload = tuple(torch.nn.Parameter(torch.empty_like(p, device=offload_device),
+                                                           requires_grad=p.requires_grad) for p in self.params_main)
+            for param_main, param_offload in self.params_offload:
+                param_offload.copy_(param_main, non_blocking=True)
+                if param_offload.grad is None:
+                    param_offload.grad = torch.zeros_like(param_offload)
         super().__init__(optim_cls(self.params_offload, *args, **kwargs))
 
     @property
