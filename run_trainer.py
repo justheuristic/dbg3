@@ -84,7 +84,6 @@ class CPULamb(Lamb):
         device_counts = Counter(p.device for p in self._module_to_offload.parameters())
         main_device, _ = device_counts.most_common(n=1)[0]
         self._module_to_offload.cpu()
-        self.param_groups = nested_map(lambda x: x.cpu() if isinstance(x, torch.Tensor) else x, self.param_groups)
         torch.cuda.synchronize()
         for param in self._module_to_offload.parameters():
             if param.grad is not None:
@@ -108,14 +107,13 @@ def get_optimizer_and_scheduler(training_args, model):
         },
     ]
 
-    opt = CPULamb(
+    opt = Lamb(
         optimizer_grouped_parameters,
         lr=training_args.learning_rate,
         betas=(training_args.adam_beta1, training_args.adam_beta2),
         eps=training_args.adam_epsilon,
         weight_decay=training_args.weight_decay,
         clamp_value=training_args.clamp_value,
-        module_to_offload=model,
         debias=True,
     )
 
