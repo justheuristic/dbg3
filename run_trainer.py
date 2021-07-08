@@ -21,7 +21,6 @@ from datasets import load_from_disk
 from torch_optimizer import Lamb
 
 import hivemind
-from hivemind.utils import nested_map
 
 
 from lib.models import LeanAlbertForPreTraining
@@ -73,27 +72,6 @@ def get_model(training_args, config, tokenizer):
     return model
 
 
-class CPULamb(Lamb):
-    def __init__(self, *args, module_to_offload: nn.Module, **kwargs):
-        super().__init__(*args, **kwargs)
-        self._module_to_offload = module_to_offload
-
-    def step(self, closure=None):
-        #TODO better way: temporarily substitute params in self.param_groups, step, then memmove updates to gpu
-        assert closure is None, "opt closure is not supported"
-        device_counts = Counter(p.device for p in self._module_to_offload.parameters())
-        main_device, _ = device_counts.most_common(n=1)[0]
-        self._module_to_offload.cpu()
-        torch.cuda.synchronize()
-        for param in self._module_to_offload.parameters():
-            if param.grad is not None:
-                param.grad = param.grad.cpu()
-        torch.cuda.synchronize()
-        res = super().step()
-        self._module_to_offload.to(main_device)
-        return res
-
-
 def get_optimizer_and_scheduler(training_args, model):
     no_decay = ["bias", "LayerNorm.weight"]
     optimizer_grouped_parameters = [
@@ -107,8 +85,9 @@ def get_optimizer_and_scheduler(training_args, model):
         },
     ]
 
-    opt = Lamb(
+    opt = OffloadOptimizer(
         optimizer_grouped_parameters,
+        optim_cls=Lamb,
         lr=training_args.learning_rate,
         betas=(training_args.adam_beta1, training_args.adam_beta2),
         eps=training_args.adam_epsilon,
