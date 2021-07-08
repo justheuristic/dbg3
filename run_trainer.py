@@ -28,7 +28,7 @@ from lib.models import LeanAlbertForPreTraining
 
 from arguments import CollaborationArguments, DatasetArguments, AlbertTrainingArguments
 import metrics_utils
-from lib.opt.cpu_wrapper import OffloadOptimizer
+from lib.opt.offload import OffloadOptimizer
 
 logger = logging.getLogger(__name__)
 LRSchedulerBase = getattr(torch.optim.lr_scheduler, '_LRScheduler', None)

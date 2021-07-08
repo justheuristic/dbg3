@@ -15,6 +15,7 @@ class OffloadOptimizer(OptimizerWrapper):
             param_groups = [{'params': param_groups}]
 
         self.offload_device = offload_device
+        self.param_groups_main = param_groups
         self.params_main = tuple(param for group in param_groups for param in group['params'])
         with torch.no_grad():
             self.params_offload = tuple(p.to(offload_device) for p in self.params_main)
@@ -22,6 +23,10 @@ class OffloadOptimizer(OptimizerWrapper):
                 if param.grad is None:
                     param.grad = torch.zeros_like(param)
         super().__init__(optim_cls(self.params_offload, *args, **kwargs))
+
+    @property
+    def param_groups(self):
+        return self.param_groups_main
 
     def step(self, closure=None, *args, **kwargs):
         assert closure is None, "closure not supported in cpu offload mode"
@@ -52,6 +57,10 @@ class OffloadOptimizer(OptimizerWrapper):
                         param_main.grad.zero_()
 
         return super().zero_grad(*args, set_to_none=False, **kwargs)
+
+    @property
+    def param_groups(self):
+        return self.optim.param_groups
 
     def add_param_group(self, param_group: dict) -> None:
         raise NotImplementedError(f"{self.__class__.__name__} does not support add_param_group.")
