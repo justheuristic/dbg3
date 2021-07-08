@@ -81,6 +81,9 @@ class CPULamb(Lamb):
         assert closure is None, "opt closure is not supported"
         device_counts = Counter(p.device for p in self._module_to_offload.parameters())
         main_device, _ = device_counts.most_common(n=1)[0]
+        for param in self._module_to_offload.parameters():
+            if param.grad is not None:
+                param.grad = param.grad.cpu()
         self._module_to_offload.cpu()
         res = super().step()
         self._module_to_offload.to(main_device)
