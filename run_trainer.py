@@ -216,7 +216,7 @@ class MonkeyPatched(nn.Module):
         return self.module.forward(*args, **kwargs)
 
     def zero_grad(self, set_to_none: bool = False) -> None:
-        if all(param.grad.isfinite() for param in self.parameters()):
+        if all(param.grad.isfinite().all() for param in self.parameters()):
             logger.debug("Successfully bypassed zero_grad")
         else:
             self.module.zero_grad()
@@ -228,7 +228,6 @@ class MonkeyPatched(nn.Module):
 class ClippedLamb(Lamb):
     """ TODO unfuck this code """
     def __init__(self, *args, max_grad_norm: float, **kwargs):
-        print("CREATED OPT WITH", max_grad_norm)
         self.max_grad_norm = max_grad_norm
         super().__init__(*args, **kwargs)
 
