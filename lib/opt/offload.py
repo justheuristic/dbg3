@@ -18,6 +18,8 @@ class OffloadOptimizer(OptimizerWrapper):
         param_groups = list(param_groups)
         if not isinstance(param_groups[0], dict):
             param_groups = [{'params': param_groups}]
+        super().__init__(optim_cls(param_groups, *args, **kwargs))
+        self.full_sync = full_sync
 
         with torch.no_grad():
             self.original_params_per_group = tuple(group["params"] for group in param_groups)
@@ -33,11 +35,9 @@ class OffloadOptimizer(OptimizerWrapper):
                     if param.grad is not None:
                         offload_param.grad.copy_(param.grad, non_blocking=True)
 
-        super().__init__(optim_cls(param_groups, *args, **kwargs))
-        self.full_sync = full_sync
-
+    @staticmethod
     @contextlib.contextmanager
-    def _replace_params(self, param_groups, replacement_params_per_group, *,
+    def _replace_params(param_groups, replacement_params_per_group, *,
                         sync_params_before: bool, sync_grads_before: bool,
                         sync_params_after: bool, sync_grads_after: bool):
         assert len(param_groups) == len(replacement_params_per_group)
@@ -59,7 +59,7 @@ class OffloadOptimizer(OptimizerWrapper):
                 group["params"] = normal_params
 
             with torch.no_grad():
-                for normal_params, offload_params in zip(normal_params_per_group, self.offload_params_per_group):
+                for normal_params, offload_params in zip(normal_params_per_group, replacement_params_per_group):
                     for param, offload_param in zip(normal_params, offload_params):
                         if sync_params_after:
                             param.copy_(offload_param, non_blocking=True)
@@ -79,19 +79,19 @@ class OffloadOptimizer(OptimizerWrapper):
     def zero_grad(self, set_to_none: bool = False, *args, **kwargs):
         if not self.full_sync:
             torch.optim.Optimizer.zero_grad(self, set_to_none)
-        with self._replace_params(self.param_groups,
+        with self._replace_params(self.param_groups, self.offload_params_per_group,
                                   sync_params_before=self.full_sync, sync_grads_before=self.full_sync,
                                   sync_params_after=self.full_sync, sync_grads_after=self.full_sync):
             return super().zero_grad(*args, set_to_none=False, **kwargs)
 
     def state_dict(self):
-        with self._replace_params(self.param_groups,
+        with self._replace_params(self.param_groups, self.offload_params_per_group,
                                   sync_params_before=self.full_sync, sync_grads_before=self.full_sync,
                                   sync_params_after=False, sync_grads_after=False):
             return self.optim.state_dict()
 
     def load_state_dict(self, state_dict: dict) -> None:
-        with self._replace_params(self.param_groups,
+        with self._replace_params(self.param_groups, self.offload_params_per_group,
                                   sync_params_before=False, sync_grads_before=False,
                                   sync_params_after=True, sync_grads_after=self.full_sync):
             return self.optim.load_state_dict(state_dict)
