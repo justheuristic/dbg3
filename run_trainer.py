@@ -107,7 +107,7 @@ def get_optimizer_and_scheduler(training_args, model):
 class CollaborativeCallback(transformers.TrainerCallback):
     def __init__(self, dht: hivemind.DHT, optimizer: hivemind.CollaborativeOptimizer,
                  model: torch.nn.Module, local_public_key: bytes, statistics_expiration: float,
-                 backup_path: str, backup_every: int = 10):
+                 backup_path: str, backup_every_steps: int = 10):
         super().__init__()
         self.model = model
         self.dht, self.collaborative_optimizer = dht, optimizer
@@ -119,7 +119,7 @@ class CollaborativeCallback(transformers.TrainerCallback):
         self.loss = 0
         self.total_samples_processed = 0
         self.backup_path = backup_path
-        self.backup_every = backup_every
+        self.backup_every_steps = backup_every_steps
         self.backup_state()
 
     def on_train_begin(self, args: TrainingArguments, state: transformers.TrainerState,
@@ -285,7 +285,10 @@ def main():
         eval_dataset=tokenized_datasets["validation"] if training_args.do_eval else None,
         optimizers=(collaborative_optimizer, NoOpScheduler(collaborative_optimizer)),
         callbacks=[CollaborativeCallback(
-            dht, collaborative_optimizer, model, local_public_key, statistics_expiration)]
+            dht, collaborative_optimizer, model, local_public_key, statistics_expiration,
+            backup_path=os.path.join(dataset_args.cache_dir, "hivemind_backup.pth"),
+            backup_every_steps=10,
+        )]
     )
     trainer.remove_callback(transformers.trainer_callback.PrinterCallback)
     trainer.remove_callback(transformers.trainer_callback.ProgressCallback)
