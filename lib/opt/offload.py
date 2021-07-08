@@ -29,7 +29,7 @@ class OffloadOptimizer(OptimizerWrapper):
 
     @property
     def param_groups(self):
-        assert len(self.params_main) == len(self.optim.param_groups)
+        assert len(self.param_groups_main) == len(self.optim.param_groups)
         merged_param_groups = []
         for main_pg, offload_pg in zip(self.param_groups_main, self.optim.param_groups):
             merged_param_groups.append(dict(offload_pg, **main_pg))  # override parameters
