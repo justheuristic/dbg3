@@ -21,6 +21,8 @@ from datasets import load_from_disk
 from torch_optimizer import Lamb
 
 import hivemind
+from hivemind.utils import nested_map
+
 
 from lib.models import LeanAlbertForPreTraining
 
@@ -82,6 +84,8 @@ class CPULamb(Lamb):
         device_counts = Counter(p.device for p in self._module_to_offload.parameters())
         main_device, _ = device_counts.most_common(n=1)[0]
         self._module_to_offload.cpu()
+        self.param_groups = nested_map(lambda x: x.cpu() if isinstance(x, torch.Tensor) else x, self.param_groups)
+        torch.cuda.synchronize()
         for param in self._module_to_offload.parameters():
             if param.grad is not None:
                 param.grad = param.grad.cpu()
