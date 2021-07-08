@@ -221,6 +221,9 @@ class MonkeyPatched(nn.Module):
         else:
             self.module.zero_grad()
 
+    def clip_grad_norm_(self, *args, **kwargs):
+        print("IGNORED clip_grad_norm_")
+
 
 class ClippedLamb(Lamb):
     """ TODO unfuck this code """
@@ -230,7 +233,8 @@ class ClippedLamb(Lamb):
         super().__init__(*args, **kwargs)
 
     def step(self, *args, **kwargs):
-        torch.nn.utils.clip_grad_norm_((param for group in self.param_groups for param in group), self.max_grad_norm)
+        iter_params = (param for group in self.param_groups for param in group['params'])
+        torch.nn.utils.clip_grad_norm_(iter_params, self.max_grad_norm)
         return super().step(*args, **kwargs)
 
 
@@ -292,9 +296,6 @@ def main():
         def _wrap_model(self, model, training=True):
             return MonkeyPatched(super()._wrap_model(model, training=training))
 
-
-    print("TODO setting max_grad_norm to None")
-    training_args.max_grad_norm = None
 
     trainer = TrainerWithIndependentShuffling(
         model=model, args=training_args, tokenizer=tokenizer, data_collator=data_collator,
