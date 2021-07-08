@@ -3,10 +3,9 @@
 import logging
 import os
 import pickle
-from collections import Counter
 from dataclasses import asdict
 from pathlib import Path
-from typing import Dict, Any
+from typing import Any
 
 import torch
 from torch import nn
@@ -87,8 +86,9 @@ def get_optimizer_and_scheduler(training_args, model):
 
     opt = OffloadOptimizer(
         optimizer_grouped_parameters,
-        optim_cls=Lamb,
+        optim_cls=ClippedLamb,
         lr=training_args.learning_rate,
+        max_grad_norm=training_args.max_grad_norm,
         betas=(training_args.adam_beta1, training_args.adam_beta2),
         eps=training_args.adam_epsilon,
         weight_decay=training_args.weight_decay,
@@ -121,7 +121,6 @@ class CollaborativeCallback(transformers.TrainerCallback):
         self.total_samples_processed = 0
         self.backup_every_steps = backup_every_steps
         self.backup = self.backup_state()
-
 
     def on_train_begin(self, args: TrainingArguments, state: transformers.TrainerState,
                        control: transformers.TrainerControl, **kwargs):
@@ -208,7 +207,7 @@ class NoOpScheduler(LRSchedulerBase):
         logger.debug("Called NoOpScheduler.load_state_dict")
 
 
-class DisableZeroGrad(nn.Module):
+class MonkeyPatched(nn.Module):
     def __init__(self, module):
         super().__init__()
         self.module = module
@@ -217,7 +216,22 @@ class DisableZeroGrad(nn.Module):
         return self.module.forward(*args, **kwargs)
 
     def zero_grad(self, set_to_none: bool = False) -> None:
-        logger.debug("Successfully bypassed zero_grad")
+        if all(param.grad.isfinite() for param in self.parameters()):
+            logger.debug("Successfully bypassed zero_grad")
+        else:
+            self.module.zero_grad()
+
+
+class ClippedLamb(Lamb):
+    """ TODO unfuck this code """
+    def __init__(self, *args, max_grad_norm: float, **kwargs):
+        print("CREATED OPT WITH", max_grad_norm)
+        self.max_grad_norm = max_grad_norm
+        super().__init__(*args, **kwargs)
+
+    def step(self, *args, **kwargs):
+        torch.nn.utils.clip_grad_norm_((param for group in self.param_groups for param in group), self.max_grad_norm)
+        return super().step(*args, **kwargs)
 
 
 def main():
@@ -276,7 +290,11 @@ def main():
             return super().get_train_dataloader()
 
         def _wrap_model(self, model, training=True):
-            return DisableZeroGrad(super()._wrap_model(model, training=training))
+            return MonkeyPatched(super()._wrap_model(model, training=training))
+
+
+    print("TODO setting max_grad_norm to None")
+    training_args.max_grad_norm = None
 
     trainer = TrainerWithIndependentShuffling(
         model=model, args=training_args, tokenizer=tokenizer, data_collator=data_collator,
