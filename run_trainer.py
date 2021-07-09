@@ -84,18 +84,17 @@ def get_optimizer_and_scheduler(training_args, model):
         },
     ]
 
-    opt = OffloadOptimizer(
+    opt = ClippedLamb(
         optimizer_grouped_parameters,
-        optim_cls=ClippedLamb,
         lr=training_args.learning_rate,
         max_grad_norm=training_args.max_grad_norm,
         betas=(training_args.adam_beta1, training_args.adam_beta2),
         eps=training_args.adam_epsilon,
         weight_decay=training_args.weight_decay,
         clamp_value=training_args.clamp_value,
-        offload_dtype=torch.float32,
         debias=True,
     )
+
 
     scheduler = get_linear_schedule_with_warmup(
         opt,
@@ -151,6 +150,7 @@ class CollaborativeCallback(transformers.TrainerCallback):
                     mini_steps=self.steps)
                 logger.info(f"Step {self.collaborative_optimizer.local_step}")
                 logger.info(f"Your current contribution: {self.total_samples_processed} samples")
+                logger.info(f"Performance: {samples_per_second} samples per second.")
                 if self.steps:
                     logger.info(f"Local loss: {self.loss / self.steps}")
 
@@ -296,11 +296,10 @@ def main():
         def _wrap_model(self, model, training=True):
             return MonkeyPatched(super()._wrap_model(model, training=training))
 
-
+    assert training_args.do_train and not training_args.do_eval
     trainer = TrainerWithIndependentShuffling(
         model=model, args=training_args, tokenizer=tokenizer, data_collator=data_collator,
-        train_dataset=tokenized_datasets["train"] if training_args.do_train else None,
-        eval_dataset=tokenized_datasets["validation"] if training_args.do_eval else None,
+        train_dataset=tokenized_datasets, eval_dataset=None,
         optimizers=(collaborative_optimizer, NoOpScheduler(collaborative_optimizer)),
         callbacks=[CollaborativeCallback(dht, collaborative_optimizer, model, local_public_key, statistics_expiration)]
     )
