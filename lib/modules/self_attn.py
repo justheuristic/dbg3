@@ -27,13 +27,15 @@ class LeanAlbertAttention(nn.Module):
         x = x.view(*new_x_shape)
         return x.permute(0, 2, 1, 3)
 
-    def forward(self, hidden_states, attention_mask=None, output_attentions=False):
-        qkv_output = self.dense_qkv(hidden_states)
+    def forward(self, hidden_states_, attention_mask=None, output_attentions=False):
+        hidden_states_ln = self.layer_norm(hidden_states_)
+
+        qkv_output = self.dense_qkv(hidden_states_ln)
         attention_output, attention_probs = checkpoint(
             self.attention_core, qkv_output, attention_mask)
         projected_context_layer = self.dense_out(attention_output)
         projected_context_layer_dropout = self.output_dropout(projected_context_layer)
-        layernormed_context_layer = self.layer_norm(hidden_states + projected_context_layer_dropout)
+        layernormed_context_layer = projected_context_layer_dropout + hidden_states_
         return (layernormed_context_layer, attention_probs) if output_attentions else (layernormed_context_layer,)
 
     def attention_core(self, qkv_output, attention_mask):
