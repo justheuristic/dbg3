@@ -2,36 +2,35 @@
 
 import logging
 import os
-import pickle
 from dataclasses import asdict
 from pathlib import Path
-from typing import Any
 
 import torch
-from torch import nn
 from torch.utils.data import DataLoader
 
 import transformers
-from transformers import set_seed, HfArgumentParser, TrainingArguments, DataCollatorForLanguageModeling
+from transformers import set_seed, HfArgumentParser, DataCollatorForLanguageModeling
 from transformers.optimization import get_linear_schedule_with_warmup
 from transformers import AlbertTokenizerFast, AlbertConfig
 from transformers.trainer_utils import is_main_process
 from transformers.trainer import Trainer
 from datasets import load_from_disk
-from torch_optimizer import Lamb
 
 import hivemind
+from hivemind.proto.runtime_pb2 import CompressionType
 
-
+import callback
 from lib.models import LeanAlbertForPreTraining
-from lib.opt.offload import OffloadOptimizer
+from lib.training.clipped_lamb import LambWithGradientClipping
+from lib.training.noop import NoOpScheduler, IgnoreGradManipulations
+from lib.training.offload import OffloadOptimizer
 
 
 from arguments import CollaborationArguments, DatasetArguments, AlbertTrainingArguments, AveragerArguments
 import utils
 
+
 logger = logging.getLogger(__name__)
-LRSchedulerBase = getattr(torch.optim.lr_scheduler, '_LRScheduler', None)
 
 
 def setup_logging(training_args):
@@ -86,12 +85,12 @@ def get_optimizer_and_scheduler(training_args, model):
 
     opt = OffloadOptimizer(
         optimizer_grouped_parameters,
-        optim_cls=ClippedLamb,
+        optim_cls=LambWithGradientClipping,
         lr=training_args.learning_rate,
-        max_grad_norm=training_args.max_grad_norm,
         betas=(training_args.adam_beta1, training_args.adam_beta2),
         eps=training_args.adam_epsilon,
         weight_decay=training_args.weight_decay,
+        max_grad_norm=training_args.max_grad_norm,
         clamp_value=training_args.clamp_value,
         debias=True,
     )
@@ -105,137 +104,23 @@ def get_optimizer_and_scheduler(training_args, model):
     return opt, scheduler
 
 
-class CollaborativeCallback(transformers.TrainerCallback):
-    def __init__(self, dht: hivemind.DHT, optimizer: hivemind.CollaborativeOptimizer,
-                 model: torch.nn.Module, local_public_key: bytes, statistics_expiration: float,
-                 backup_every_steps: int = 10):
-        super().__init__()
-        self.model = model
-        self.dht, self.collaborative_optimizer = dht, optimizer
-        self.local_public_key = local_public_key
-        self.statistics_expiration = statistics_expiration
-        self.last_reported_collaboration_step = -1
-        self.samples = 0
-        self.steps = 0
-        self.loss = 0
-        self.total_samples_processed = 0
-        self.backup_every_steps = backup_every_steps
-        self.backup = self.backup_state()
+class TrainerWithIndependentShuffling(Trainer):
+    """
+    A version of HuggingFace trainer that shuffles the dataset using a separate random seed.
+    Used to ensure that peers don't process batches in the same order.
+    """
 
-    def on_train_begin(self, args: TrainingArguments, state: transformers.TrainerState,
-                       control: transformers.TrainerControl, **kwargs):
-        logger.info('Loading state from peers')
-        self.collaborative_optimizer.load_state_from_peers()
+    def __init__(self, *, data_seed: int, **kwargs):
+        super().__init__(**kwargs)
+        self.data_seed = data_seed
 
-    def on_step_end(self, args: TrainingArguments, state: transformers.TrainerState,
-                    control: transformers.TrainerControl, **kwargs):
-        control.should_log = True
-        if not self.params_are_finite():
-            logger.warning("Found invalid grads, reloading model from saved state")
-            self.restore_from_backup(self.backup)
-            return control
+    def get_train_dataloader(self) -> DataLoader:
+        """ Shuffle data independently for each peer to avoid duplicating batches [important for quality] """
+        torch.manual_seed(self.data_seed)
+        return super().get_train_dataloader()
 
-        if state.log_history:
-            self.loss += state.log_history[-1]['loss']
-            self.steps += 1
-            if self.collaborative_optimizer.local_step != self.last_reported_collaboration_step:
-                self.last_reported_collaboration_step = self.collaborative_optimizer.local_step
-                self.total_samples_processed += self.samples
-                samples_per_second = self.collaborative_optimizer.performance_ema.samples_per_second
-                statistics = utils.LocalMetrics(
-                    step=self.collaborative_optimizer.local_step,
-                    samples_per_second=samples_per_second,
-                    samples_accumulated=self.samples,
-                    loss=self.loss,
-                    mini_steps=self.steps)
-                logger.info(f"Step {self.collaborative_optimizer.local_step}")
-                logger.info(f"Your current contribution: {self.total_samples_processed} samples")
-                logger.info(f"Performance: {samples_per_second} samples per second.")
-                if self.steps:
-                    logger.info(f"Local loss: {self.loss / self.steps}")
-
-                self.loss = 0
-                self.steps = 0
-                if self.collaborative_optimizer.is_synchronized:
-                    self.dht.store(key=self.collaborative_optimizer.prefix + "_metrics",
-                                   subkey=self.local_public_key, value=statistics.dict(),
-                                   expiration_time=hivemind.get_dht_time() + self.statistics_expiration,
-                                   return_future=True)
-
-                self.backup = self.backup_state()
-
-        self.samples = self.collaborative_optimizer.local_samples_accumulated
-
-        return control
-
-    @torch.no_grad()
-    def params_are_finite(self):
-        for param in self.model.parameters():
-            if not torch.all(torch.isfinite(param)):
-                return False
-        return True
-
-    @torch.no_grad()
-    def backup_state(self) -> Any:
-        return pickle.dumps({'model': self.model.state_dict(),
-                             'opt': self.collaborative_optimizer.opt.state_dict()})
-
-    @torch.no_grad()
-    def restore_from_backup(self, backup):
-        state = pickle.loads(self.backup)
-        self.model.load_state_dict(state['model'])
-        self.collaborative_optimizer.opt.load_state_dict(state['opt'])
-
-
-class NoOpScheduler(LRSchedulerBase):
-    """ Dummy scheduler for transformers.Trainer. The real scheduler is defined in CollaborativeOptimizer.scheduler """
-
-    def get_lr(self):
-        return [group['lr'] for group in self.optimizer.param_groups]
-
-    def print_lr(self, *args, **kwargs):
-        if self.optimizer.scheduler:
-            return self.optimizer.scheduler.print_lr(*args, **kwargs)
-
-    def step(self):
-        logger.debug("Called NoOpScheduler.step")
-        self._last_lr = self.get_lr()
-
-    def state_dict(self):
-        return {}
-
-    def load_state_dict(self, *args, **kwargs):
-        logger.debug("Called NoOpScheduler.load_state_dict")
-
-
-class MonkeyPatched(nn.Module):
-    def __init__(self, module):
-        super().__init__()
-        self.module = module
-
-    def forward(self, *args, **kwargs):
-        return self.module.forward(*args, **kwargs)
-
-    def zero_grad(self, set_to_none: bool = False) -> None:
-        if all(param.grad.isfinite().all() for param in self.parameters()):
-            logger.debug("Successfully bypassed zero_grad")
-        else:
-            self.module.zero_grad()
-
-    def clip_grad_norm_(self, *args, **kwargs):
-        """ ignore clip_grad_norm on each step, clip in optimizer instead """
-
-
-class ClippedLamb(Lamb):
-    """ TODO unfuck this code """
-    def __init__(self, *args, max_grad_norm: float, **kwargs):
-        self.max_grad_norm = max_grad_norm
-        super().__init__(*args, **kwargs)
-
-    def step(self, *args, **kwargs):
-        iter_params = (param for group in self.param_groups for param in group['params'])
-        torch.nn.utils.clip_grad_norm_(iter_params, self.max_grad_norm)
-        return super().step(*args, **kwargs)
+    def _wrap_model(self, model, training=True):
+        return IgnoreGradManipulations(super()._wrap_model(model, training=training))
 
 
 def main():
@@ -265,12 +150,14 @@ def main():
     validators, local_public_key = utils.make_validators(collaboration_args.experiment_prefix)
     dht = hivemind.DHT(
         start=True, initial_peers=collaboration_args.initial_peers,
+        max_workers=collaboration_args.dht_max_workers,
         listen=not collaboration_args.client_mode,
         listen_on=collaboration_args.dht_listen_on,
         host_maddrs=collaboration_args.host_maddrs,
         announce_maddrs=collaboration_args.announce_maddrs,
         use_ipfs=collaboration_args.use_ipfs,
-        record_validators=validators, max_workers=3)
+        record_validators=validators,
+    )
 
     utils.log_visible_maddrs(dht.get_visible_maddrs(), only_p2p=collaboration_args.use_ipfs)
 
@@ -282,49 +169,33 @@ def main():
     adjusted_target_batch_size = collaboration_args.target_batch_size - collaboration_args.batch_size_lead
 
     collaborative_optimizer = hivemind.CollaborativeOptimizer(
-        opt=opt,
-        dht=dht,
-        scheduler=scheduler,
-        prefix=collaboration_args.experiment_prefix,
-        compression_type=hivemind.utils.CompressionType.Value(collaboration_args.compression),
-        batch_size_per_step=total_batch_size_per_step,
-        throughput=collaboration_args.bandwidth,
-        target_batch_size=adjusted_target_batch_size,
-        client_mode=collaboration_args.client_mode,
-        reuse_grad_buffers=True,
-        verbose=True,
-        start=True,
-        **asdict(averager_args),
+        opt=opt, dht=dht, scheduler=scheduler, prefix=collaboration_args.experiment_prefix,
+        compression_type=CompressionType.Value(collaboration_args.compression),
+        batch_size_per_step=total_batch_size_per_step, throughput=collaboration_args.bandwidth,
+        target_batch_size=adjusted_target_batch_size, client_mode=collaboration_args.client_mode,
+        reuse_grad_buffers=True, verbose=True, start=True, **asdict(averager_args),
     )
 
-    class TrainerWithIndependentShuffling(Trainer):
-        def get_train_dataloader(self) -> DataLoader:
-            """ Shuffle data independently for each peer to avoid duplicating batches [important for quality] """
-            torch.manual_seed(hash(local_public_key))
-            return super().get_train_dataloader()
+    collaborative_training_callback = callback.CollaborativeCallback(
+        dht, collaborative_optimizer, model, local_public_key, statistics_expiration
+    )
 
-        def _wrap_model(self, model, training=True):
-            return MonkeyPatched(super()._wrap_model(model, training=training))
+    # Note: the code below creates the trainer with dummy scheduler and removes some callbacks.
+    # This is done because collaborative training has its own callbacks that take other peers into account.
 
     assert training_args.do_train and not training_args.do_eval
     trainer = TrainerWithIndependentShuffling(
-        model=model, args=training_args, tokenizer=tokenizer, data_collator=data_collator,
+        model=model, args=training_args, tokenizer=tokenizer,
+        data_collator=data_collator, data_seed=hash(local_public_key),
         train_dataset=tokenized_datasets, eval_dataset=None,
         optimizers=(collaborative_optimizer, NoOpScheduler(collaborative_optimizer)),
-        callbacks=[CollaborativeCallback(dht, collaborative_optimizer, model, local_public_key, statistics_expiration)]
+        callbacks=[collaborative_training_callback]
     )
     trainer.remove_callback(transformers.trainer_callback.PrinterCallback)
     trainer.remove_callback(transformers.trainer_callback.ProgressCallback)
 
-    # Training
-    if training_args.do_train:
-        latest_checkpoint_dir = max(
-            Path(training_args.output_dir).glob('checkpoint*'),
-            default=None,
-            key=os.path.getctime
-        )
-
-        trainer.train(model_path=latest_checkpoint_dir)
+    latest_checkpoint_dir = max(Path(training_args.output_dir).glob('checkpoint*'), key=os.path.getctime, default=None)
+    trainer.train(model_path=latest_checkpoint_dir)
 
 
 if __name__ == "__main__":

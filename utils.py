@@ -8,6 +8,7 @@ from hivemind.dht.schema import BytesWithPublicKey, SchemaValidator
 from hivemind.dht.validation import RecordValidatorBase
 from hivemind.utils.logging import get_logger
 
+from run_trainer import logger
 
 logger = get_logger(__name__)
 

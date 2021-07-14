@@ -5,3 +5,4 @@ wandb>=0.10.26
 sentencepiece
 whatsmyip
 nltk>=3.6.2
+wandb>=0.10.33
