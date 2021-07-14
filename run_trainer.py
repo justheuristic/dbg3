@@ -95,7 +95,6 @@ def get_optimizer_and_scheduler(training_args, model):
         debias=True,
     )
 
-
     scheduler = get_linear_schedule_with_warmup(
         opt,
         num_warmup_steps=training_args.warmup_steps,
