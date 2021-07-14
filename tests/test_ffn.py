@@ -21,11 +21,11 @@ class ReferenceFFN(nn.Module):
         self.dropout = dropout
 
     def forward(self, input):
-        output = self.dense_i2h(input)
+        output = self.dense_i2h(self.layer_norm(input))
         output = self.activation(output)
         output = self.dense_h2o(output)
         output = F.dropout(output, self.dropout)
-        return self.layer_norm(output + input)
+        return output + input
 
 
 def test_ffn_exact_match():
