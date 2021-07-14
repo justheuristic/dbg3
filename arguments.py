@@ -113,7 +113,7 @@ class DatasetArguments:
         default="https://s3.amazonaws.com/models.huggingface.co/bert/albert-large-v2-config.json",
         metadata={"help": "Path to the model config"},
     )
-    cache_dir: Optional[str] = field(default="data", metadata={"help": "Path to the cache"})
+    cache_dir: Optional[str] = field(default="cache", metadata={"help": "Path to the cache"})
 
 
 @dataclass

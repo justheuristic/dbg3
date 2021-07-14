@@ -24,11 +24,11 @@ import hivemind
 
 
 from lib.models import LeanAlbertForPreTraining
-
-
-from arguments import CollaborationArguments, DatasetArguments, AlbertTrainingArguments
-import metrics_utils
 from lib.opt.offload import OffloadOptimizer
+
+
+from arguments import CollaborationArguments, DatasetArguments, AlbertTrainingArguments, AveragerArguments
+import utils
 
 logger = logging.getLogger(__name__)
 LRSchedulerBase = getattr(torch.optim.lr_scheduler, '_LRScheduler', None)
@@ -84,8 +84,9 @@ def get_optimizer_and_scheduler(training_args, model):
         },
     ]
 
-    opt = ClippedLamb(
+    opt = OffloadOptimizer(
         optimizer_grouped_parameters,
+        optim_cls=ClippedLamb,
         lr=training_args.learning_rate,
         max_grad_norm=training_args.max_grad_norm,
         betas=(training_args.adam_beta1, training_args.adam_beta2),
@@ -141,7 +142,7 @@ class CollaborativeCallback(transformers.TrainerCallback):
                 self.last_reported_collaboration_step = self.collaborative_optimizer.local_step
                 self.total_samples_processed += self.samples
                 samples_per_second = self.collaborative_optimizer.performance_ema.samples_per_second
-                statistics = metrics_utils.LocalMetrics(
+                statistics = utils.LocalMetrics(
                     step=self.collaborative_optimizer.local_step,
                     samples_per_second=samples_per_second,
                     samples_accumulated=self.samples,
@@ -238,14 +239,13 @@ class ClippedLamb(Lamb):
 
 
 def main():
-    parser = HfArgumentParser((AlbertTrainingArguments, DatasetArguments, CollaborationArguments))
-    training_args, dataset_args, collaboration_args = parser.parse_args_into_dataclasses()
+    parser = HfArgumentParser((AlbertTrainingArguments, DatasetArguments, CollaborationArguments, AveragerArguments))
+    training_args, dataset_args, collaboration_args, averager_args = parser.parse_args_into_dataclasses()
 
     logger.info(f"Found {len(collaboration_args.initial_peers)} initial peers: {collaboration_args.initial_peers}")
     if len(collaboration_args.initial_peers) == 0:
         raise ValueError("Please specify at least one network endpoint in initial peers.")
 
-    collaboration_args_dict = asdict(collaboration_args)
     setup_logging(training_args)
 
     # Set seed before initializing model.
@@ -262,28 +262,39 @@ def main():
 
     opt, scheduler = get_optimizer_and_scheduler(training_args, model)
 
-    validators, local_public_key = metrics_utils.make_validators(
-        collaboration_args_dict['experiment_prefix'])
+    validators, local_public_key = utils.make_validators(collaboration_args.experiment_prefix)
     dht = hivemind.DHT(
-        start=True, initial_peers=collaboration_args_dict.pop('initial_peers'),
-        listen=not collaboration_args_dict['client_mode'],
-        listen_on=collaboration_args_dict.pop('dht_listen_on'),
-        endpoint=collaboration_args_dict.pop('endpoint'),
+        start=True, initial_peers=collaboration_args.initial_peers,
+        listen=not collaboration_args.client_mode,
+        listen_on=collaboration_args.dht_listen_on,
+        host_maddrs=collaboration_args.host_maddrs,
+        announce_maddrs=collaboration_args.announce_maddrs,
+        use_ipfs=collaboration_args.use_ipfs,
         record_validators=validators, max_workers=3)
+
+    utils.log_visible_maddrs(dht.get_visible_maddrs(), only_p2p=collaboration_args.use_ipfs)
 
     total_batch_size_per_step = training_args.per_device_train_batch_size * training_args.gradient_accumulation_steps
     if torch.cuda.device_count() != 0:
         total_batch_size_per_step *= torch.cuda.device_count()
-    statistics_expiration = collaboration_args_dict.pop('statistics_expiration')
-    adjusted_target_batch_size = collaboration_args_dict.pop('target_batch_size') \
-                                 - collaboration_args_dict.pop('batch_size_lead')
+
+    statistics_expiration = collaboration_args.statistics_expiration
+    adjusted_target_batch_size = collaboration_args.target_batch_size - collaboration_args.batch_size_lead
 
     collaborative_optimizer = hivemind.CollaborativeOptimizer(
-        opt=opt, dht=dht, scheduler=scheduler, prefix=collaboration_args_dict.pop('experiment_prefix'),
-        compression_type=hivemind.utils.CompressionType.Value(collaboration_args_dict.pop('compression')),
-        batch_size_per_step=total_batch_size_per_step, throughput=collaboration_args_dict.pop('bandwidth'),
-        target_batch_size=adjusted_target_batch_size, client_mode=collaboration_args_dict.pop('client_mode'),
-        verbose=True, start=True, reuse_grad_buffers=True, **collaboration_args_dict
+        opt=opt,
+        dht=dht,
+        scheduler=scheduler,
+        prefix=collaboration_args.experiment_prefix,
+        compression_type=hivemind.utils.CompressionType.Value(collaboration_args.compression),
+        batch_size_per_step=total_batch_size_per_step,
+        throughput=collaboration_args.bandwidth,
+        target_batch_size=adjusted_target_batch_size,
+        client_mode=collaboration_args.client_mode,
+        reuse_grad_buffers=True,
+        verbose=True,
+        start=True,
+        **asdict(averager_args),
     )
 
     class TrainerWithIndependentShuffling(Trainer):
