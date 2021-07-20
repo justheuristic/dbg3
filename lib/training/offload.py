@@ -12,13 +12,11 @@ class OffloadOptimizer(OptimizerWrapper):
     def __init__(
             self, param_groups: Union[Iterable[torch.nn.Parameter], Iterable[Dict]],
             optim_cls: Type[torch.optim.Optimizer],  *args, full_sync: bool = True,
-            offload_device=torch.device('cpu'), offload_dtype: Optional[torch.dtype] = None,
-            max_grad_norm: Optional[float] = None, **kwargs):
+            offload_device=torch.device('cpu'), offload_dtype: Optional[torch.dtype] = None, **kwargs):
         param_groups = list(param_groups)
         if not isinstance(param_groups[0], dict):
             param_groups = [{'params': param_groups}]
         super().__init__(optim_cls(param_groups, *args, **kwargs))
-        self.max_grad_norm = max_grad_norm
         self.full_sync = full_sync
 
         with torch.no_grad():
@@ -72,8 +70,6 @@ class OffloadOptimizer(OptimizerWrapper):
         assert closure is None, "closure not supported in cpu offload mode"
         with self._use_offloaded_params(sync_params_before=self.full_sync, sync_grads_before=True,
                                         sync_params_after=True, sync_grads_after=self.full_sync):
-            iter_params = (param for group in self.param_groups for param in group['params'])
-            torch.nn.utils.clip_grad_norm_(iter_params, self.max_grad_norm)
             return self.optim.step(*args, **kwargs)
 
     def zero_grad(self, set_to_none: bool = False, *args, **kwargs):
