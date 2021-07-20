@@ -151,7 +151,7 @@ def main():
     dht = hivemind.DHT(
         start=True, initial_peers=collaboration_args.initial_peers,
         max_workers=collaboration_args.dht_max_workers,
-        cleint_mode=collaboration_args.client_mode,
+        client_mode=collaboration_args.client_mode,
         host_maddrs=collaboration_args.host_maddrs,
         announce_maddrs=collaboration_args.announce_maddrs,
         use_ipfs=collaboration_args.use_ipfs,
