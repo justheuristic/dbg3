@@ -151,8 +151,7 @@ def main():
     dht = hivemind.DHT(
         start=True, initial_peers=collaboration_args.initial_peers,
         max_workers=collaboration_args.dht_max_workers,
-        listen=not collaboration_args.client_mode,
-        listen_on=collaboration_args.dht_listen_on,
+        cleint_mode=collaboration_args.client_mode,
         host_maddrs=collaboration_args.host_maddrs,
         announce_maddrs=collaboration_args.announce_maddrs,
         use_ipfs=collaboration_args.use_ipfs,
@@ -171,7 +170,7 @@ def main():
     collaborative_optimizer = hivemind.CollaborativeOptimizer(
         opt=opt, dht=dht, scheduler=scheduler, prefix=collaboration_args.experiment_prefix,
         compression_type=CompressionType.Value(collaboration_args.compression),
-        batch_size_per_step=total_batch_size_per_step, throughput=collaboration_args.bandwidth,
+        batch_size_per_step=total_batch_size_per_step, bandwidth=collaboration_args.bandwidth,
         target_batch_size=adjusted_target_batch_size, client_mode=collaboration_args.client_mode,
         reuse_grad_buffers=True, verbose=True, start=True, **asdict(averager_args),
     )
