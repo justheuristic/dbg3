@@ -9,7 +9,7 @@ import torch
 from torch.utils.data import DataLoader
 
 import transformers
-from transformers import set_seed, HfArgumentParser, DataCollatorForLanguageModeling
+from transformers import set_seed, HfArgumentParser
 from transformers.optimization import get_linear_schedule_with_warmup
 from transformers import AlbertTokenizerFast, AlbertConfig
 from transformers.trainer_utils import is_main_process
@@ -25,10 +25,9 @@ from lib.training.clipped_lamb import LambWithGradientClipping
 from lib.training.noop import NoOpScheduler, IgnoreGradManipulations
 from lib.training.offload import OffloadOptimizer
 
-
 from arguments import CollaborationArguments, DatasetArguments, AlbertTrainingArguments, AveragerArguments
 import utils
-
+from data_collator import AlbertDataCollatorForWholeWordMask
 
 logger = logging.getLogger(__name__)
 
@@ -143,7 +142,7 @@ def main():
 
     tokenized_datasets = load_from_disk(Path(dataset_args.dataset_path))
     # This data collator will take care of randomly masking the tokens.
-    data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer)
+    data_collator = AlbertDataCollatorForWholeWordMask(tokenizer=tokenizer, pad_to_multiple_of=8)
 
     opt, scheduler = get_optimizer_and_scheduler(training_args, model)
 
