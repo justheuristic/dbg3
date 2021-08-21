@@ -19,16 +19,15 @@ class BaseTrainingArguments:
     use_ipfs: bool = field(
         default=False,
         metadata={
-            "help": "Use IPFS to find initial_peers. If enabled, you only need to provide /p2p/XXXX part of the multiaddrs "
-            "for the initial_peers (no need to specify a particular IPv4/IPv6 host and port)"
+            "help": "Use IPFS to find initial_peers. If enabled, you only need to provide /p2p/XXXX part of multiaddrs "
+            "for the initial_peers (no need to specify a particular IPv4/IPv6 address and port)"
         },
     )
     host_maddrs: List[str] = field(
-        default_factory=lambda: ["/ip4/0.0.0.0/tcp/0", "/ip4/0.0.0.0/udp/0/quic"],
+        default_factory=lambda: ["/ip4/0.0.0.0/tcp/0"],
         metadata={
             "help": "Multiaddrs to listen for external connections from other p2p instances. "
-            "Defaults to all IPv4 interfaces with TCP and QUIC (over UDP) protocols: "
-            "/ip4/0.0.0.0/tcp/0 /ip4/0.0.0.0/udp/0/quic"
+            "Defaults to all IPv4 interfaces with TCP protocol: /ip4/0.0.0.0/tcp/0"
         },
     )
     announce_maddrs: List[str] = field(
@@ -100,7 +99,6 @@ class CollaborationArguments(CollaborativeOptimizerArguments, BaseTrainingArgume
     backup_every_steps: int = field(
         default=10, metadata={"help": "In case of NaN, fallback to a backup saved once in this many global steps"}
     )
-    dht_max_workers: int = field(default=3, metadata={"help": "dht get/store can make this many concurrent requests"})
 
 
 @dataclass
@@ -114,6 +112,7 @@ class DatasetArguments:
         metadata={"help": "Path to the model config"},
     )
     cache_dir: Optional[str] = field(default="cache", metadata={"help": "Path to the cache"})
+    train_key: Optional[str] = field(default=None, metadata={"help": "Optional subset name from training dataset"})
 
 
 @dataclass
@@ -124,9 +123,9 @@ class AlbertTrainingArguments(TrainingArguments):
     gradient_accumulation_steps: int = 2
     seq_length: int = 512
 
-    max_steps: int = 125_000  # please note: this affects both number of steps and learning rate schedule
     learning_rate: float = 0.00176
-    warmup_steps: int = 5000
+    num_training_steps: int = 125_000  # total number of collaborative SGD updates, used for learning rate schedule
+    num_warmup_steps: int = 5000
     adam_epsilon: float = 1e-6
     weight_decay: float = 0.01
     max_grad_norm: float = 1.0
@@ -141,3 +140,4 @@ class AlbertTrainingArguments(TrainingArguments):
     save_steps: int = 500
 
     output_dir: str = "outputs"
+

@@ -1,2 +1,2 @@
-from .self_attn import *
+from .attn import *
 from .ffn import *

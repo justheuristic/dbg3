@@ -11,8 +11,8 @@ from torch.utils.data import DataLoader
 import transformers
 from transformers import set_seed, HfArgumentParser
 from transformers.optimization import get_linear_schedule_with_warmup
-from transformers import AlbertTokenizerFast, AlbertConfig
 from transformers.trainer_utils import is_main_process
+from transformers import AlbertTokenizerFast
 from transformers.trainer import Trainer
 from datasets import load_from_disk
 
@@ -20,6 +20,7 @@ import hivemind
 from hivemind.proto.runtime_pb2 import CompressionType
 
 import callback
+from lib import LeanAlbertConfig
 from lib.models import LeanAlbertForPreTraining
 from lib.training.clipped_lamb import LambWithGradientClipping
 from lib.training.noop import NoOpScheduler, IgnoreGradManipulations
@@ -97,7 +98,7 @@ def get_optimizer_and_scheduler(training_args, model):
     scheduler = get_linear_schedule_with_warmup(
         opt,
         num_warmup_steps=training_args.warmup_steps,
-        num_training_steps=training_args.max_steps
+        num_training_steps=training_args.num_training_steps
     )
 
     return opt, scheduler
@@ -135,7 +136,7 @@ def main():
     # Set seed before initializing model.
     set_seed(training_args.seed)
 
-    config = AlbertConfig.from_pretrained(dataset_args.config_path, cache_dir=dataset_args.cache_dir)
+    config = LeanAlbertConfig.from_pretrained(dataset_args.config_path, cache_dir=dataset_args.cache_dir)
     tokenizer = AlbertTokenizerFast.from_pretrained(dataset_args.tokenizer_path, cache_dir=dataset_args.cache_dir)
     model = get_model(training_args, config, tokenizer)
     model.to(training_args.device)
@@ -149,7 +150,6 @@ def main():
     validators, local_public_key = utils.make_validators(collaboration_args.experiment_prefix)
     dht = hivemind.DHT(
         start=True, initial_peers=collaboration_args.initial_peers,
-        max_workers=collaboration_args.dht_max_workers,
         client_mode=collaboration_args.client_mode,
         host_maddrs=collaboration_args.host_maddrs,
         announce_maddrs=collaboration_args.announce_maddrs,
@@ -178,14 +178,15 @@ def main():
         dht, collaborative_optimizer, model, local_public_key, statistics_expiration
     )
 
+    assert training_args.do_train and not training_args.do_eval
+    training_dataset = tokenized_datasets[dataset_args.train_key] if dataset_args.train_key else tokenized_datasets
+
     # Note: the code below creates the trainer with dummy scheduler and removes some callbacks.
     # This is done because collaborative training has its own callbacks that take other peers into account.
-
-    assert training_args.do_train and not training_args.do_eval
     trainer = TrainerWithIndependentShuffling(
         model=model, args=training_args, tokenizer=tokenizer,
         data_collator=data_collator, data_seed=hash(local_public_key),
-        train_dataset=tokenized_datasets, eval_dataset=None,
+        train_dataset=training_dataset, eval_dataset=None,
         optimizers=(collaborative_optimizer, NoOpScheduler(collaborative_optimizer)),
         callbacks=[collaborative_training_callback]
     )

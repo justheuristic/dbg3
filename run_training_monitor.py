@@ -27,12 +27,6 @@ class TrainingMonitorArguments(BaseTrainingArguments):
     Specify initial_peers argument for that purpose
     """
 
-    use_google_dns: bool = field(
-        default=False,
-        metadata={
-            "help": "Use Google DNS to determine the public IP address of this machine (and add it to --announce_maddrs)"
-        },
-    )
     refresh_period: float = field(default=30, metadata={"help": "Period (in seconds) for fetching the keys from DHT"})
     wandb_project: Optional[str] = field(
         default=None, metadata={"help": "Name of Weights & Biases project to report the training progress to"}
@@ -70,6 +64,7 @@ class CheckpointHandler:
         self.upload_interval = monitor_args.upload_interval
         self.previous_step = -1
 
+        #TODO FIX ME
         config = AlbertConfig.from_pretrained(monitor_args.model_config_path)
         self.model = AlbertForPreTraining(config)
 
@@ -146,15 +141,6 @@ class CheckpointHandler:
 if __name__ == "__main__":
     parser = HfArgumentParser((TrainingMonitorArguments, CollaborativeOptimizerArguments, AveragerArguments))
     monitor_args, collab_optimizer_args, averager_args = parser.parse_args_into_dataclasses()
-
-    if monitor_args.use_google_dns:
-        request = requests.get("https://api.ipify.org")
-        request.raise_for_status()
-
-        address = request.text
-        logger.info(f"Received public IP address of this machine: {address}")
-        version = ip_address(address).version
-        monitor_args.announce_maddrs += [f"/ip{version}/{address}/tcp/0", f"/ip{version}/{address}/udp/0/quic"]
 
     experiment_prefix = monitor_args.experiment_prefix
     validators, local_public_key = utils.make_validators(experiment_prefix)
