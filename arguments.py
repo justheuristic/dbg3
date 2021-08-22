@@ -124,8 +124,8 @@ class AlbertTrainingArguments(TrainingArguments):
     seq_length: int = 512
 
     learning_rate: float = 0.00176
-    num_training_steps: int = 125_000  # total number of collaborative SGD updates, used for learning rate schedule
-    num_warmup_steps: int = 5000
+    total_steps: int = 125_000  # total number of collaborative SGD updates, used for learning rate schedule
+    warmup_steps: int = 5000
     adam_epsilon: float = 1e-6
     weight_decay: float = 0.01
     max_grad_norm: float = 1.0

@@ -3,18 +3,17 @@
 import logging
 import time
 from dataclasses import asdict, dataclass, field
-from ipaddress import ip_address
 from typing import Optional
 
-import requests
 import torch
 import wandb
-from torch_optimizer import Lamb
-from transformers import AlbertForPreTraining, AlbertConfig, HfArgumentParser
+from transformers import HfArgumentParser, AlbertTokenizerFast
 
 import hivemind
 import utils
 from arguments import BaseTrainingArguments, CollaborativeOptimizerArguments, AveragerArguments
+from run_trainer import get_model, get_optimizer_and_scheduler
+from lib.models.config import LeanAlbertConfig
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +48,11 @@ class TrainingMonitorArguments(BaseTrainingArguments):
     )
     store_checkpoins: bool = field(default=False, metadata={"help": "If True, enables CheckpointHandler"})
 
+    #TODO remove the args below and figure out a better way to instantiate the correct model/opt
+    output_dir: str = "outputs"
+    tokenizer_path: Optional[str] = field(default="data/tokenizer", metadata={"help": "Path to the tokenizer"})
+    cache_dir: Optional[str] = field(default="cache", metadata={"help": "Path to the cache"})
+
 
 class CheckpointHandler:
     def __init__(
@@ -65,29 +69,10 @@ class CheckpointHandler:
         self.previous_step = -1
 
         #TODO FIX ME
-        config = AlbertConfig.from_pretrained(monitor_args.model_config_path)
-        self.model = AlbertForPreTraining(config)
-
-        no_decay = ["bias", "LayerNorm.weight"]
-        optimizer_grouped_parameters = [
-            {
-                "params": [p for n, p in self.model.named_parameters() if not any(nd in n for nd in no_decay)],
-                "weight_decay": 0.01,
-            },
-            {
-                "params": [p for n, p in self.model.named_parameters() if any(nd in n for nd in no_decay)],
-                "weight_decay": 0.0,
-            },
-        ]
-
-        opt = Lamb(
-            optimizer_grouped_parameters,
-            lr=0.00176,
-            weight_decay=0.01,
-            clamp_value=10000.0,
-            debias=True,
-        )
-
+        config = LeanAlbertConfig.from_pretrained(monitor_args.model_config_path)
+        tokenizer = AlbertTokenizerFast.from_pretrained(monitor_args.tokenizer_path, cache_dir=monitor_args.cache_dir)
+        self.model = get_model(monitor_args, config, tokenizer)
+        opt, scheduler = get_optimizer_and_scheduler(monitor_args, self.model)
         adjusted_target_batch_size = collab_optimizer_args.target_batch_size - collab_optimizer_args.batch_size_lead
 
         self.collaborative_optimizer = hivemind.CollaborativeOptimizer(
@@ -139,7 +124,8 @@ class CheckpointHandler:
 
 
 if __name__ == "__main__":
-    parser = HfArgumentParser((TrainingMonitorArguments, CollaborativeOptimizerArguments, AveragerArguments))
+    parser = HfArgumentParser(
+        (TrainingMonitorArguments, CollaborativeOptimizerArguments, AveragerArguments))
     monitor_args, collab_optimizer_args, averager_args = parser.parse_args_into_dataclasses()
 
     experiment_prefix = monitor_args.experiment_prefix
@@ -160,7 +146,7 @@ if __name__ == "__main__":
 
     current_step = 0
     if monitor_args.store_checkpoins:
-        checkpoint_handler = CheckpointHandler(monitor_args, collab_optimizer_args, averager_args, dht)
+        checkpoint_handler = CheckpointHandler(monitor_args, collab_optimizer_args, averager_args, dataset_args, dht)
 
     while True:
         metrics_dict = dht.get(experiment_prefix + "_metrics", latest=True)
