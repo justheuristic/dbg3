@@ -143,8 +143,8 @@ def main():
 
     tokenized_datasets = load_from_disk(Path(dataset_args.dataset_path))
     # This data collator will take care of randomly masking the tokens.
-    data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer)
-    #TODO ^-- rollback to AlbertDataCollatorForWholeWordMask
+    data_collator = AlbertDataCollatorForWholeWordMask(
+        tokenizer=tokenizer, pad_to_multiple_of=training_args.pad_to_multiple_of)
 
     opt, scheduler = get_optimizer_and_scheduler(training_args, model)
 

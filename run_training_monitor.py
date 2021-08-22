@@ -68,7 +68,6 @@ class CheckpointHandler:
         self.upload_interval = monitor_args.upload_interval
         self.previous_step = -1
 
-        #TODO FIX ME
         config = LeanAlbertConfig.from_pretrained(monitor_args.model_config_path)
         tokenizer = AlbertTokenizerFast.from_pretrained(monitor_args.tokenizer_path, cache_dir=monitor_args.cache_dir)
         self.model = get_model(monitor_args, config, tokenizer)

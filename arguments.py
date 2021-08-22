@@ -122,6 +122,7 @@ class AlbertTrainingArguments(TrainingArguments):
     per_device_eval_batch_size: int = 4
     gradient_accumulation_steps: int = 2
     seq_length: int = 512
+    pad_to_multiple_of: int = 8
 
     learning_rate: float = 0.00176
     total_steps: int = 125_000  # total number of collaborative SGD updates, used for learning rate schedule
