@@ -3,13 +3,12 @@ import logging
 from collections import defaultdict
 
 import torch
-
-from razdel import sentenize
+import nltk
 
 logger = logging.getLogger(__name__)
 
 
-def create_instances_from_document(tokenizer, document, max_seq_length):
+def create_instances_from_document(tokenizer, document, max_sequence_length):
     """Creates `TrainingInstance`s for a single document."""
     # We DON'T just concatenate all of the tokens from a document into a long
     # sequence and choose an arbitrary split point because this would make the
@@ -20,12 +19,12 @@ def create_instances_from_document(tokenizer, document, max_seq_length):
     current_chunk = []
     current_length = 0
 
-    segmented_sents = [s.text for s in sentenize(document)]
+    segmented_sents = nltk.sent_tokenize(document)
 
     for i, sent in enumerate(segmented_sents):
         current_chunk.append(sent)
         current_length += len(tokenizer.tokenize(sent))
-        if i == len(segmented_sents) - 1 or current_length >= max_seq_length:
+        if i == len(segmented_sents) - 1 or current_length >= max_sequence_length:
             if len(current_chunk) > 1:
                 # `a_end` is how many segments from `current_chunk` go into the `A`
                 # (first) sentence.
@@ -55,13 +54,14 @@ def create_instances_from_document(tokenizer, document, max_seq_length):
                 instance = tokenizer(
                     " ".join(tokens_a),
                     " ".join(tokens_b),
+                    padding='max_length',
                     truncation="longest_first",
-                    max_length=max_seq_length,
+                    max_length=max_sequence_length,
                     # We use this option because DataCollatorForLanguageModeling
                     # is more efficient when it receives the `special_tokens_mask`.
                     return_special_tokens_mask=True,
                 )
-                assert len(instance["input_ids"]) <= max_seq_length
+                assert len(instance["input_ids"]) <= max_sequence_length
                 instance["sentence_order_label"] = 1 if is_random_next else 0
                 instances.append(instance)
 
@@ -70,14 +70,13 @@ def create_instances_from_document(tokenizer, document, max_seq_length):
     return instances
 
 
-def tokenize_function(tokenizer, examples, max_seq_length):
+def tokenize_function(tokenizer, examples, max_sequence_length):
     # Remove empty texts
-    texts = (text for text in examples["text"] if len(text) > 0 and not text.isspace())
-
+    texts = [text for text in examples["text"] if len(text) > 0 and not text.isspace()]
     new_examples = defaultdict(list)
 
     for text in texts:
-        instances = create_instances_from_document(tokenizer, text, max_seq_length)
+        instances = create_instances_from_document(tokenizer, text, max_sequence_length)
         for instance in instances:
             for key, value in instance.items():
                 new_examples[key].append(value)
@@ -101,5 +100,3 @@ class WrappedIterableDataset(torch.utils.data.IterableDataset):
                     logger.info("Began iterating minibatches!")
                     started = True
                 yield sample
-
-
