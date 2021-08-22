@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 class YTDataset(torch.utils.data.IterableDataset):
     """Reads dataset in chunks from internal yandex database. Assumes that data is already shuffled."""
 
-    def __init__(self, cluster: str, table: str, chunk_size: int = 1000, num_readers: int = 16, cache_size: int = 1000,
+    def __init__(self, cluster: str, table: str, chunk_size: int = 1000, num_readers: int = 4, cache_size: int = 1000,
                  max_consecutive_errors: int = 10, seed: Optional[Any] = None, cycle: bool = True):
         self.cluster, self.table = cluster, table
         self.chunk_size, self.num_readers, self.cache_size = chunk_size, num_readers, cache_size
