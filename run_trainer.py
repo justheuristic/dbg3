@@ -142,11 +142,6 @@ def main():
     model = get_model(training_args, config, tokenizer)
     model.to(training_args.device)
 
-    tokenized_datasets = load_from_disk(Path(dataset_args.dataset_path))
-    # This data collator will take care of randomly masking the tokens.
-    data_collator = AlbertDataCollatorForWholeWordMask(
-        tokenizer=tokenizer, pad_to_multiple_of=training_args.pad_to_multiple_of)
-
     opt, scheduler = get_optimizer_and_scheduler(training_args, model)
 
     validators, local_public_key = utils.make_validators(collaboration_args.experiment_prefix)
@@ -183,6 +178,10 @@ def main():
     assert training_args.do_train and not training_args.do_eval
     training_dataset = make_lazy_dataset(
         tokenizer, shuffle_seed=hash(local_public_key) % 2 ** 31, max_sequence_length=training_args.seq_length)
+
+    # This data collator will take care of randomly masking the tokens.
+    data_collator = AlbertDataCollatorForWholeWordMask(
+        tokenizer=tokenizer, pad_to_multiple_of=training_args.pad_to_multiple_of)
 
     # Note: the code below creates the trainer with dummy scheduler and removes some callbacks.
     # This is done because collaborative training has its own callbacks that take other peers into account.
