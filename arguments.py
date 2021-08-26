@@ -103,11 +103,8 @@ class CollaborationArguments(CollaborativeOptimizerArguments, BaseTrainingArgume
 
 @dataclass
 class DatasetArguments:
-    tokenizer_path: Optional[str] = field(default="data/tokenizer", metadata={"help": "Path to the tokenizer"})
-    config_path: Optional[str] = field(
-        default="https://s3.amazonaws.com/models.huggingface.co/bert/albert-large-v2-config.json",
-        metadata={"help": "Path to the model config"},
-    )
+    tokenizer_path: Optional[str] = field(default="tokenizer/data", metadata={"help": "Path to the tokenizer"})
+    config_path: Optional[str] = field(default="model.json", metadata={"help": "Path to the model config"})
     cache_dir: Optional[str] = field(default="cache", metadata={"help": "Path to the cache"})
     train_key: Optional[str] = field(default=None, metadata={"help": "Optional subset name from training dataset"})
 
