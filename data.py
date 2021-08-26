@@ -90,7 +90,6 @@ def tokenize_function(tokenizer, examples):
         for instance in instances:
             for key, value in instance.items():
                 new_examples[key].append(value)
-
     return new_examples
 
 
@@ -115,18 +114,18 @@ class WrappedIterableDataset(torch.utils.data.IterableDataset):
 def make_lazy_wikioscar_dataset(tokenizer, probs: Sequence[float] = (0.23, 0.77),
                                 shuffle_buffer_size: int = 10 ** 4, shuffle_seed: Optional[int] = None,
                                 preprocessing_batch_size: int = 256):
-    wiki = load_dataset("lhoestq/wikipedia_bn", split="train", streaming=True)
-    #oscar = load_dataset("oscar", "unshuffled_deduplicated_bn", split="train", streaming=True)
+    wiki = load_dataset("lhoestq/wikipedia_bn", split="train", streaming=False)
+    oscar = load_dataset("oscar", "unshuffled_deduplicated_bn", split="train", streaming=False)
 
     # both should have the same columns
-    wiki = wiki.map(lambda x: {"text": x["text"]})
-    #oscar = oscar.map(lambda x: {"text": x["text"], "orig": f"oscar[{x['id']}]"})
+    wiki = wiki.map(lambda x: {"text": x["text"]}).remove_columns("title")
+    oscar = oscar.map(lambda x: {"text": x["text"]}).remove_columns("id")
+    wiki = wiki.map(partial(tokenize_function, tokenizer), batched=True, batch_size=preprocessing_batch_size, remove_columns=["text"], num_proc=16)
+    oscar = oscar.map(partial(tokenize_function, tokenizer), batched=True, batch_size=preprocessing_batch_size,  remove_columns=["text"], num_proc=16)
 
     # merge, shuffle and set pytorch format
-    dataset = interleave_datasets([wiki, wiki], probabilities=list(probs))
-    dataset = dataset.shuffle(shuffle_buffer_size, seed=shuffle_seed)
+    dataset = interleave_datasets([wiki, oscar], probabilities=list(probs))
+    dataset = dataset.shuffle(seed=shuffle_seed)
     # ^-- this creates a buffer of random examples that will be refilled in background
-
-    dataset = dataset.map(partial(tokenize_function, tokenizer), batched=True, batch_size=preprocessing_batch_size)
     dataset = dataset.with_format("torch")
     return WrappedIterableDataset(dataset)
