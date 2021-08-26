@@ -120,8 +120,9 @@ def make_lazy_wikioscar_dataset(tokenizer, probs: Sequence[float] = (0.23, 0.77)
     # both should have the same columns
     wiki = wiki.map(lambda x: {"text": x["text"]}).remove_columns("title")
     oscar = oscar.map(lambda x: {"text": x["text"]}).remove_columns("id")
-    wiki = wiki.map(partial(tokenize_function, tokenizer), batched=True, batch_size=preprocessing_batch_size, remove_columns=["text"], num_proc=16)
-    oscar = oscar.map(partial(tokenize_function, tokenizer), batched=True, batch_size=preprocessing_batch_size,  remove_columns=["text"], num_proc=16)
+
+    wiki = wiki.map(partial(tokenize_function, tokenizer), batched=True, remove_columns=["text"], num_proc=64)
+    oscar = oscar.map(partial(tokenize_function, tokenizer), batched=True, remove_columns=["text"], num_proc=64)
 
     # merge, shuffle and set pytorch format
     dataset = interleave_datasets([wiki, oscar], probabilities=list(probs))
