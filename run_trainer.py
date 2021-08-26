@@ -178,8 +178,8 @@ def main():
     training_dataset = make_lazy_wikioscar_dataset(tokenizer, shuffle_seed=hash(local_public_key) % 2 ** 31)
 
     # This data collator will take care of randomly masking the tokens.
-    data_collator = AlbertDataCollatorForWholeWordMask(
-        tokenizer=tokenizer, pad_to_multiple_of=training_args.pad_to_multiple_of)
+    data_collator = transformers.DataCollatorForLanguageModeling(tokenizer=tokenizer)
+    #AlbertDataCollatorForWholeWordMask(tokenizer=tokenizer, pad_to_multiple_of=training_args.pad_to_multiple_of)
 
     # Note: the code below creates the trainer with dummy scheduler and removes some callbacks.
     # This is done because collaborative training has its own callbacks that take other peers into account.

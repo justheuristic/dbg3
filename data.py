@@ -63,6 +63,7 @@ def create_instances_from_document(tokenizer, document, max_seq_length):
                 instance = tokenizer(
                     ' '.join(tokens_a),
                     ' '.join(tokens_b),
+                    padding='max_length',
                     truncation='longest_first',
                     max_length=max_seq_length,
                     # We use this option because DataCollatorForLanguageModeling
@@ -80,7 +81,7 @@ def create_instances_from_document(tokenizer, document, max_seq_length):
 
 def tokenize_function(tokenizer, examples):
     # Remove empty texts
-    texts = (text for text in examples["text"] if len(text) > 0 and not text.isspace())
+    texts = [text for text in examples["text"] if len(text) > 0 and not text.isspace()]
 
     new_examples = defaultdict(list)
 
@@ -114,18 +115,18 @@ class WrappedIterableDataset(torch.utils.data.IterableDataset):
 def make_lazy_wikioscar_dataset(tokenizer, probs: Sequence[float] = (0.23, 0.77),
                                 shuffle_buffer_size: int = 10 ** 4, shuffle_seed: Optional[int] = None,
                                 preprocessing_batch_size: int = 256):
-    wiki = load_dataset("dataset/wikipedia_bn", split="train", streaming=True)
-    oscar = load_dataset("oscar", "unshuffled_deduplicated_bn", split="train", streaming=True)
+    wiki = load_dataset("lhoestq/wikipedia_bn", split="train", streaming=True)
+    #oscar = load_dataset("oscar", "unshuffled_deduplicated_bn", split="train", streaming=True)
 
     # both should have the same columns
-    wiki = wiki.map(lambda x: {"text": x["text"], "orig": f"wiki[{x['title']}]"})
-    oscar = oscar.map(lambda x: {"text": x["text"], "orig": f"oscar[{x['id']}]"})
+    wiki = wiki.map(lambda x: {"text": x["text"]})
+    #oscar = oscar.map(lambda x: {"text": x["text"], "orig": f"oscar[{x['id']}]"})
 
     # merge, shuffle and set pytorch format
-    dataset = interleave_datasets([wiki, oscar], probabilities=list(probs))
+    dataset = interleave_datasets([wiki, wiki], probabilities=list(probs))
     dataset = dataset.shuffle(shuffle_buffer_size, seed=shuffle_seed)
     # ^-- this creates a buffer of random examples that will be refilled in background
 
-    dataset = dataset.map(partial(tokenize_function, tokenizer), batch_size=preprocessing_batch_size)
+    dataset = dataset.map(partial(tokenize_function, tokenizer), batched=True, batch_size=preprocessing_batch_size)
     dataset = dataset.with_format("torch")
     return WrappedIterableDataset(dataset)
