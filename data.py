@@ -114,9 +114,7 @@ class WrappedIterableDataset(torch.utils.data.IterableDataset):
 def make_lazy_wikioscar_dataset(tokenizer, probs: Sequence[float] = (0.23, 0.77),
                                 shuffle_buffer_size: int = 10 ** 4, shuffle_seed: Optional[int] = None,
                                 preprocessing_batch_size: int = 256):
-    wiki = load_dataset("wikipedia_bn", split="train", streaming=True)
-    # ^-- no need for script_version: already compatible with streaming
-
+    wiki = load_dataset("dataset/wikipedia_bn", split="train", streaming=True)
     oscar = load_dataset("oscar", "unshuffled_deduplicated_bn", split="train", streaming=True)
 
     # both should have the same columns
