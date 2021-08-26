@@ -14,22 +14,21 @@ from transformers.optimization import get_linear_schedule_with_warmup
 from transformers.trainer_utils import is_main_process
 from transformers import AlbertTokenizerFast
 from transformers.trainer import Trainer
-from datasets import load_from_disk
 
 import hivemind
 from hivemind.proto.runtime_pb2 import CompressionType
 
 import callback
-from data import make_lazy_dataset
 from lib import LeanAlbertConfig
 from lib.models import LeanAlbertForPreTraining
 from lib.training.clipped_lamb import LambWithGradientClipping
 from lib.training.noop import NoOpScheduler, IgnoreGradManipulations
 from lib.training.offload import OffloadOptimizer
 
+from data import make_lazy_wikioscar_dataset
+from data_collator import AlbertDataCollatorForWholeWordMask
 from arguments import CollaborationArguments, DatasetArguments, AlbertTrainingArguments, AveragerArguments
 import utils
-from lib.data.data_collator import AlbertDataCollatorForWholeWordMask
 
 logger = logging.getLogger(__name__)
 
@@ -176,8 +175,7 @@ def main():
     )
 
     assert training_args.do_train and not training_args.do_eval
-    training_dataset = make_lazy_dataset(
-        tokenizer, shuffle_seed=hash(local_public_key) % 2 ** 31, max_sequence_length=training_args.seq_length)
+    training_dataset = make_lazy_wikioscar_dataset(tokenizer, shuffle_seed=hash(local_public_key) % 2 ** 31)
 
     # This data collator will take care of randomly masking the tokens.
     data_collator = AlbertDataCollatorForWholeWordMask(
