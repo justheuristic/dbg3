@@ -50,7 +50,7 @@ class TrainingMonitorArguments(BaseTrainingArguments):
 
     #TODO remove the args below and figure out a better way to instantiate the correct model/opt
     output_dir: str = "outputs"
-    tokenizer_path: Optional[str] = field(default="data/tokenizer", metadata={"help": "Path to the tokenizer"})
+    tokenizer_path: Optional[str] = field(default="tokenizer/tokenizer", metadata={"help": "Path to the tokenizer"})
     cache_dir: Optional[str] = field(default="cache", metadata={"help": "Path to the cache"})
 
 

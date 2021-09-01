@@ -28,4 +28,4 @@ tokenizer.train_from_iterator(
     special_tokens=["<pad>", "<unk>", "[CLS]", "[SEP]", "[MASK]"],
 )
 
-tokenizer.save(f"data/tokenizer.json")
+tokenizer.save(f"tokenizer/tokenizer.json")

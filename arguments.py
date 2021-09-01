@@ -103,7 +103,7 @@ class CollaborationArguments(CollaborativeOptimizerArguments, BaseTrainingArgume
 
 @dataclass
 class DatasetArguments:
-    tokenizer_path: Optional[str] = field(default="tokenizer/data", metadata={"help": "Path to the tokenizer"})
+    tokenizer_path: Optional[str] = field(default="tokenizer/tokenizer", metadata={"help": "Path to the tokenizer"})
     config_path: Optional[str] = field(default="model.json", metadata={"help": "Path to the model config"})
     cache_dir: Optional[str] = field(default="cache", metadata={"help": "Path to the cache"})
     train_key: Optional[str] = field(default=None, metadata={"help": "Optional subset name from training dataset"})
