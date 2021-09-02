@@ -59,6 +59,7 @@ class TrainingMonitorArguments(BaseTrainingArguments):
     )
     output_dir: str = "outputs"
     tokenizer_path: Optional[str] = field(default="tokenizer/tokenizer", metadata={"help": "Path to the tokenizer"})
+    weight_decay: int = 0.01
     cache_dir: Optional[str] = field(default="cache", metadata={"help": "Path to the cache"})
 
 
