@@ -51,7 +51,7 @@ class AlbertDataCollatorForWholeWordMask(DataCollatorForLanguageModeling):
         if isinstance(examples[0], (dict, BatchEncoding)):
             batch = self.tokenizer.pad(examples, return_tensors="pt", pad_to_multiple_of=self.pad_to_multiple_of)
         else:
-            batch = {"input_ids": _collate_batch(examples, self.tokenizer, pad_to_multiple_of=self.pad_to_multiple_of)}
+            batch = {"input_ids": _torch_collate_batch(examples, self.tokenizer, pad_to_multiple_of=self.pad_to_multiple_of)}
 
         # If special token mask has been preprocessed, pop it from the dict.
         special_tokens_mask = batch.pop("special_tokens_mask", None)
@@ -60,7 +60,7 @@ class AlbertDataCollatorForWholeWordMask(DataCollatorForLanguageModeling):
         for e in batch["input_ids"]:
             ref_tokens = self.tokenizer.convert_ids_to_tokens(tolist(e))
             mask_labels.append(self._whole_word_mask(ref_tokens))
-        batch_mask = _collate_batch(mask_labels, self.tokenizer, pad_to_multiple_of=self.pad_to_multiple_of)
+        batch_mask = _torch_collate_batch(mask_labels, self.tokenizer, pad_to_multiple_of=self.pad_to_multiple_of)
 
         batch["input_ids"], batch["labels"] = self.mask_tokens(
             batch["input_ids"], batch_mask, special_tokens_mask=special_tokens_mask
