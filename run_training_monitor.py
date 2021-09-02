@@ -57,7 +57,6 @@ class TrainingMonitorArguments(BaseTrainingArguments):
                     "May be generated using ``./p2p-keygen`` from ``go-libp2p-daemon``."
         },
     )
-    output_dir: str = "outputs"
     tokenizer_path: Optional[str] = field(default="tokenizer/tokenizer", metadata={"help": "Path to the tokenizer"})
     cache_dir: Optional[str] = field(default="cache", metadata={"help": "Path to the cache"})
 
