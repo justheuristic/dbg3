@@ -90,7 +90,7 @@ class CheckpointHandler:
             dht=dht,
             prefix=experiment_prefix,
             compression=averaging_compression, state_compression=Float16Compression(),
-            throughput=collab_optimizer_args.bandwidth,
+            bandwidth=collab_optimizer_args.bandwidth,
             target_batch_size=adjusted_target_batch_size,
             client_mode=collab_optimizer_args.client_mode,
             verbose=True,
