@@ -108,7 +108,7 @@ class DatasetArguments:
 
 @dataclass
 class AlbertTrainingArguments(TrainingArguments):
-    dataloader_num_workers: int = 4
+    dataloader_num_workers: int = 0  # for streaming compatibility
     per_device_train_batch_size: int = 4
     per_device_eval_batch_size: int = 4
     gradient_accumulation_steps: int = 2
@@ -128,6 +128,9 @@ class AlbertTrainingArguments(TrainingArguments):
     do_train: bool = True
 
     logging_steps: int = 100
+    max_steps: int = 10 ** 9
+    save_steps: int = 10 ** 9
+
     save_total_limit: int = 2
     save_steps: int = 500
 

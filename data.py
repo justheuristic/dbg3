@@ -121,7 +121,7 @@ def make_lazy_wikioscar_dataset(
     wiki = load_dataset("lhoestq/wikipedia_bn", split="train", streaming=True)
     # ^-- no need for script_version: already compatible with streaming
 
-    oscar = load_dataset("lhoestq/wikipedia_bn", split="train", streaming=True)#load_dataset("oscar", "unshuffled_deduplicated_bn", split="train", script_version="streaming")
+    oscar = load_dataset("oscar", "unshuffled_deduplicated_bn", split="train", streaming=True)
 
     # both should have the same columns
     wiki = wiki.map(lambda x: {"text": x["text"], "orig": f"wiki[{x['title']}]"})
