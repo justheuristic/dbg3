@@ -21,7 +21,7 @@ class OffloadOptimizer(OptimizerWrapper):
         self.full_sync = full_sync
         self.conduit = conduit if conduit is not None else DeviceConduit([
             param for group in param_groups for param in group["params"]
-        ], device=param_groups[0][0].device)
+        ], device=param_groups[0]["params"][0].device)
 
     @contextlib.contextmanager
     def _use_offloaded_params(self, *,
