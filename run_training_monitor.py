@@ -7,6 +7,7 @@ from typing import Optional
 
 import torch
 import wandb
+from hivemind import Float16Compression, SizeAdaptiveCompression, Uniform8BitQuantization
 from transformers import HfArgumentParser, AlbertTokenizerFast
 
 import hivemind
@@ -48,7 +49,13 @@ class TrainingMonitorArguments(BaseTrainingArguments):
     )
     store_checkpoins: bool = field(default=False, metadata={"help": "If True, enables CheckpointHandler"})
 
-    #TODO remove the args below and figure out a better way to instantiate the correct model/opt
+    identity_path: Optional[str] = field(
+        default=None,
+        metadata={
+            "help": "Path to a pre-generated private key file. If defined, makes the peer ID deterministic. "
+                    "May be generated using ``./p2p-keygen`` from ``go-libp2p-daemon``."
+        },
+    )
     output_dir: str = "outputs"
     tokenizer_path: Optional[str] = field(default="tokenizer/tokenizer", metadata={"help": "Path to the tokenizer"})
     cache_dir: Optional[str] = field(default="cache", metadata={"help": "Path to the cache"})
@@ -74,11 +81,14 @@ class CheckpointHandler:
         opt, scheduler = get_optimizer_and_scheduler(monitor_args, self.model)
         adjusted_target_batch_size = collab_optimizer_args.target_batch_size - collab_optimizer_args.batch_size_lead
 
+        averaging_compression = SizeAdaptiveCompression(
+            threshold=2 ** 16 + 1, less=Float16Compression(), greater_equal=Uniform8BitQuantization()),
+
         self.collaborative_optimizer = hivemind.CollaborativeOptimizer(
             opt=opt,
             dht=dht,
             prefix=experiment_prefix,
-            compression_type=hivemind.utils.CompressionType.Value(collab_optimizer_args.compression),
+            compression=averaging_compression, state_compression=Float16Compression(),
             throughput=collab_optimizer_args.bandwidth,
             target_batch_size=adjusted_target_batch_size,
             client_mode=collab_optimizer_args.client_mode,
@@ -137,6 +147,7 @@ if __name__ == "__main__":
         use_ipfs=monitor_args.use_ipfs,
         host_maddrs=monitor_args.host_maddrs,
         announce_maddrs=monitor_args.announce_maddrs,
+        identity_path=monitor_args.identity_path,
     )
     utils.log_visible_maddrs(dht.get_visible_maddrs(), only_p2p=monitor_args.use_ipfs)
 
@@ -145,7 +156,7 @@ if __name__ == "__main__":
 
     current_step = 0
     if monitor_args.store_checkpoins:
-        checkpoint_handler = CheckpointHandler(monitor_args, collab_optimizer_args, averager_args, dataset_args, dht)
+        checkpoint_handler = CheckpointHandler(monitor_args, collab_optimizer_args, averager_args, dht)
 
     while True:
         metrics_dict = dht.get(experiment_prefix + "_metrics", latest=True)
