@@ -43,8 +43,8 @@ class OffloadOptimizer(OptimizerWrapper):
 
             yield self.param_groups
         finally:
-            for group, original_params in zip(self.param_groups, original_param_groups):
-                group["params"] = original_params
+            for group, original_param_group in zip(self.param_groups, original_param_groups):
+                group["params"] = original_param_group
 
             with torch.no_grad():
                 self.conduit.move_to_device(original_params, params=sync_params_after, grads=sync_grads_after)
