@@ -12,15 +12,14 @@ class DeviceConduit:
         self.device, self.lock = device, mp.Lock()
         self.host_parameters = [nn.Parameter(param.data.cpu()) for param in parameters]
         for param in self.host_parameters:
-            if param.grad is not None:
+            if param.grad is None:
                 param.grad = torch.zeros_like(param)
-        
+
         self.strides = np.cumsum([0] + [p.numel() for p in self.host_parameters])
         self.device_buffer = torch.zeros(self.strides[-1], device=self.device)
         self.host_buffer = self.device_buffer.detach().cpu()
 
     def move_to_device(self, device_parameters, params: bool = False, grads: bool = False):
-        assert params or grads
         if params:
             self._move_tensors_to_device(self.host_parameters, device_parameters)
         if grads:
@@ -28,7 +27,6 @@ class DeviceConduit:
                                          [dp.grad for dp in device_parameters])
 
     def move_to_host(self, device_parameters, params: bool = False, grads: bool = False):
-        assert params or grads
         if params:
             self._move_tensors_to_host(device_parameters, self.host_parameters)
         if grads:
