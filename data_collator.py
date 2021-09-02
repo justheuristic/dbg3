@@ -5,7 +5,7 @@ from typing import Dict, List, Optional, Tuple, Union
 
 import torch
 from transformers import DataCollatorForLanguageModeling
-from transformers.data.data_collator import _collate_batch, tolist
+from transformers.data.data_collator import _torch_collate_batch, tolist
 from transformers.models.albert import AlbertTokenizer, AlbertTokenizerFast
 from transformers.tokenization_utils_base import BatchEncoding
 
