@@ -8,6 +8,7 @@ from typing import Optional
 import torch
 import wandb
 from hivemind import Float16Compression, SizeAdaptiveCompression, Uniform8BitQuantization
+from hivemind.averaging.training import load_optimizer_state
 from transformers import HfArgumentParser, AlbertTokenizerFast
 
 import hivemind
@@ -48,7 +49,7 @@ class TrainingMonitorArguments(BaseTrainingArguments):
         default=None, metadata={"help": "Frequency (in seconds) of uploading the model to Hub"}
     )
     store_checkpoins: bool = field(default=False, metadata={"help": "If True, enables CheckpointHandler"})
-
+    initial_state_path: Optional[str] = field(default=None, metadata={"help": "Path to the initial checkpoint"})
     identity_path: Optional[str] = field(
         default=None,
         metadata={
@@ -96,6 +97,24 @@ class CheckpointHandler:
             start=True,
             **asdict(averager_args),
         )
+
+        if monitor_args.initial_state_path is not None:
+            logger.info(f"Loading initial state from {monitor_args.initial_state_path}...")
+            parameters_and_extras = [param for param_group in self.collaborative_optimizer.opt.param_groups
+                                     for param in param_group["params"]]
+            metadata, flat_tensors = torch.load(monitor_args.initial_state_path)
+            parameters_and_extras.extend(self.collaborative_optimizer.averager.extra_tensors)
+            num_local_tensors = len(parameters_and_extras)
+            loaded_parameters_and_extras = flat_tensors[:num_local_tensors]
+            loaded_opt_tensors = flat_tensors[num_local_tensors:]
+            with torch.no_grad():
+                for local_param, loaded_param in zip(parameters_and_extras, loaded_parameters_and_extras):
+                    local_param[...] = loaded_param
+                load_optimizer_state(
+                    self.collaborative_optimizer.opt, metadata["optimizer_metadata"], loaded_opt_tensors)
+            self.local_step = max(self.collaborative_optimizer.local_step, metadata["step"])
+            logger.info(f"State loaded, starting from step {self.local_step}")
+
         self.previous_timestamp = time.time()
 
     def is_time_to_save_state(self, cur_step):
