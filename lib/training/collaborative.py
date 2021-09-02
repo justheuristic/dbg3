@@ -1,3 +1,4 @@
+import hivemind
 
-
-# class CollaborativeTPUOptimizer():
+class CollaborativeTPUOptimizer(hivemind.optim.CollaborativeOptimizer):
+    pass

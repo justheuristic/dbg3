@@ -6,11 +6,13 @@ import random
 import logging
 from collections import defaultdict
 from functools import partial
+from multiprocessing import cpu_count
 from typing import Sequence, Optional
 
 import torch
 from bnlp import NLTKTokenizer
 from datasets import load_dataset, interleave_datasets
+from transformers import AlbertTokenizerFast, AlbertTokenizer
 from prefetch_generator import BackgroundGenerator
 
 logger = logging.getLogger(__name__)
@@ -106,7 +108,6 @@ class WrappedIterableDataset(torch.utils.data.IterableDataset):
         logger.info("Pre-fetching training samples...")
         while True:
             for sample in BackgroundGenerator(iter(self.hf_iterable), max_prefetch=64):
-                print('pew!')
                 if not started:
                     logger.info("Began iterating minibatches!")
                     started = True

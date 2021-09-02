@@ -53,4 +53,3 @@ class DeviceConduit:
         for i in range(len(self.host_parameters)):
             tensors.append(buffer[self.strides[i]: self.strides[i + 1]].view(self.host_parameters[i].shape))
         return tensors
-
