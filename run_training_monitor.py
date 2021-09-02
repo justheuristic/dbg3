@@ -13,7 +13,7 @@ from transformers import HfArgumentParser, AlbertTokenizerFast
 
 import hivemind
 import utils
-from arguments import BaseTrainingArguments, CollaborativeOptimizerArguments, AveragerArguments
+from arguments import BaseTrainingArguments, CollaborativeOptimizerArguments, AveragerArguments, AlbertTrainingArguments
 from run_trainer import get_model, get_optimizer_and_scheduler
 from lib.models.config import LeanAlbertConfig
 
@@ -59,7 +59,6 @@ class TrainingMonitorArguments(BaseTrainingArguments):
     )
     output_dir: str = "outputs"
     tokenizer_path: Optional[str] = field(default="tokenizer/tokenizer", metadata={"help": "Path to the tokenizer"})
-    weight_decay: int = 0.01
     cache_dir: Optional[str] = field(default="cache", metadata={"help": "Path to the cache"})
 
 
@@ -67,6 +66,7 @@ class CheckpointHandler:
     def __init__(
         self,
         monitor_args: TrainingMonitorArguments,
+        training_args: AlbertTrainingArguments,
         collab_optimizer_args: CollaborativeOptimizerArguments,
         averager_args: AveragerArguments,
         dht: hivemind.DHT,
@@ -154,8 +154,8 @@ class CheckpointHandler:
 
 if __name__ == "__main__":
     parser = HfArgumentParser(
-        (TrainingMonitorArguments, CollaborativeOptimizerArguments, AveragerArguments))
-    monitor_args, collab_optimizer_args, averager_args = parser.parse_args_into_dataclasses()
+        (TrainingMonitorArguments, AlbertTrainingArguments, CollaborativeOptimizerArguments, AveragerArguments))
+    monitor_args, training_args, collab_optimizer_args, averager_args = parser.parse_args_into_dataclasses()
 
     experiment_prefix = monitor_args.experiment_prefix
     validators, local_public_key = utils.make_validators(experiment_prefix)
@@ -176,7 +176,7 @@ if __name__ == "__main__":
 
     current_step = 0
     if monitor_args.store_checkpoins:
-        checkpoint_handler = CheckpointHandler(monitor_args, collab_optimizer_args, averager_args, dht)
+        checkpoint_handler = CheckpointHandler(monitor_args, training_args, collab_optimizer_args, averager_args, dht)
 
     while True:
         metrics_dict = dht.get(experiment_prefix + "_metrics", latest=True)
