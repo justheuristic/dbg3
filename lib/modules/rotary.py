@@ -30,7 +30,6 @@ class RotaryEmbeddings(nn.Module):
 
 
 @torch.no_grad()
-@torch.jit.script
 def get_auxiliary_tensors(seq_len: int, dim: int, dtype: torch.dtype, device: torch.device, base: int):
     """
     Compute auxiliary sine and cosine tensors for rotary position embedding
@@ -46,7 +45,6 @@ def get_auxiliary_tensors(seq_len: int, dim: int, dtype: torch.dtype, device: to
     return cos.to(dtype), sin.to(dtype)
 
 
-@torch.jit.script
 def rotate(x: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor) -> torch.Tensor:
     """ rotate pairwise coordinate using precomputed cos & sin tensors """
     dim = x.shape[-1]
