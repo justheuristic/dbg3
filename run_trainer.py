@@ -187,7 +187,6 @@ def main(index: Optional[int] = None):
         reuse_grad_buffers=True, verbose=True, start=True, **asdict(averager_args),
     )
 
-
     if xm.is_master_ordinal():
         collaborative_training_callback = callback.CollaborativeCallback(
             dht, collaborative_optimizer, model, local_public_key, statistics_expiration

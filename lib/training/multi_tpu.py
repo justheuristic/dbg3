@@ -11,27 +11,29 @@ from lib.training.conduit import DeviceConduit
 
 class TPUCollaborativeOptimizer(CollaborativeOptimizer):
     def __init__(self, opt, conduit: Optional[DeviceConduit] = None, **kwargs):
-        self.conduit = conduit if conduit is not None else DeviceConduit([
-            param for group in opt.param_groups for param in group["params"]
-        ], device=opt.param_groups[0]["params"][0].device)
-
+        self.opt = opt
         if xm.is_master_ordinal():
+            self.conduit = conduit if conduit is not None else DeviceConduit([
+                param for group in opt.param_groups for param in group["params"]
+            ], device=opt.param_groups[0]["params"][0].device)
             super().__init__(opt, **kwargs)
 
-    def step(self, *args, **kwargs):
-        super().step(*args, **kwargs)
-        device_params = [param for group in self.param_groups for param in group["params"]]
+    def parameters(self):
+        return [param for group in self.opt.param_groups for param in group["params"]]
 
-        # all tpus move params to device
-        with torch.no_grad():
+    def step(self, *args, **kwargs):
+        if xm.is_master_ordinal():
+            super().step(*args, **kwargs)
+            device_params = [param for group in self.param_groups for param in group["params"]]
             self.conduit.move_to_device(device_params, params=True, grads=False)
 
+        with torch.no_grad():
             scale = 1.0 if xm.is_master_ordinal() else 0.0
-            for param in device_params:
+            for param in self.parameters:
                 param.mul_(scale)
 
             # all-reduce up 1 * master + 0 * everyone else => broadcast master weights
-            xm.all_reduce(xm.REDUCE_SUM, device_params)
+            xm.all_reduce(xm.REDUCE_SUM, self.parameters)
 
     def _make_averager(self, **kwargs):
         return TPUFriendlyAverager(
