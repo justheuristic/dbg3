@@ -1,5 +1,6 @@
 import torch
 import numpy as np
+import multiprocessing as mp
 from torch import nn
 
 
@@ -8,7 +9,7 @@ class DeviceConduit:
 
     def __init__(self, parameters, device):
         print(f"Building device conduit for {device}")
-        self.device = device
+        self.device, self.lock = device, mp.Lock()
         self.host_parameters = [nn.Parameter(param.data.cpu()) for param in parameters]
         for param in self.host_parameters:
             if param.grad is not None:
@@ -35,17 +36,19 @@ class DeviceConduit:
                                        [hp.grad for hp in self.host_parameters])
 
     def _move_tensors_to_host(self, device_tensors, host_tensors):
-        self.device_buffer.copy_(torch.cat([tensor.view(-1) for tensor in device_tensors], dim=0))
-        self.host_buffer[...] = self.device_buffer.cpu()
-        for host_tensor, host_update in host_tensors, self._slice_into_tensors(self.host_buffer):
-            host_tensor[...] = host_update
+        with mp.Lock():
+            self.device_buffer.copy_(torch.cat([tensor.view(-1) for tensor in device_tensors], dim=0))
+            self.host_buffer[...] = self.device_buffer.cpu()
+            for host_tensor, host_update in host_tensors, self._slice_into_tensors(self.host_buffer):
+                host_tensor[...] = host_update
 
     def _move_tensors_to_device(self, host_tensors, device_tensors):
-        for i in range(len(self.host_parameters)):
-            self.host_buffer[self.strides[i]: self.strides[i + 1]] = host_tensors[i].view(-1)
-        self.device_buffer[...] = self.host_buffer.to(self.device)
-        for device_tensor, device_update in device_tensors, self._slice_into_tensors(self.device_buffer):
-            device_tensor.copy_(device_update)
+        with mp.Lock():
+            for i in range(len(self.host_parameters)):
+                self.host_buffer[self.strides[i]: self.strides[i + 1]] = host_tensors[i].view(-1)
+            self.device_buffer[...] = self.host_buffer.to(self.device)
+            for device_tensor, device_update in device_tensors, self._slice_into_tensors(self.device_buffer):
+                device_tensor.copy_(device_update)
 
     def _slice_into_tensors(self, buffer):
         tensors = []
