@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Optional
 
 import torch
+from hivemind import SizeAdaptiveCompression, Float16Compression, Uniform8BitQuantization
 from torch.utils.data import DataLoader
 
 import transformers
@@ -168,9 +169,12 @@ def main(index: Optional[int] = None):
     statistics_expiration = collaboration_args.statistics_expiration
     adjusted_target_batch_size = collaboration_args.target_batch_size - collaboration_args.batch_size_lead
 
+    averaging_compression = SizeAdaptiveCompression(
+        threshold=2 ** 16 + 1, less=Float16Compression(), greater_equal=Uniform8BitQuantization()),
+
     collaborative_optimizer = hivemind.CollaborativeOptimizer(
         opt=opt, dht=dht, scheduler=scheduler, prefix=collaboration_args.experiment_prefix,
-        compression_type=CompressionType.Value(collaboration_args.compression),
+        compression=averaging_compression, state_compression=Float16Compression(),
         batch_size_per_step=total_batch_size_per_step, bandwidth=collaboration_args.bandwidth,
         target_batch_size=adjusted_target_batch_size, client_mode=collaboration_args.client_mode,
         reuse_grad_buffers=True, verbose=True, start=True, **asdict(averager_args),
