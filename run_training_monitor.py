@@ -78,7 +78,7 @@ class CheckpointHandler:
 
         config = LeanAlbertConfig.from_pretrained(monitor_args.model_config_path)
         tokenizer = AlbertTokenizerFast.from_pretrained(monitor_args.tokenizer_path, cache_dir=monitor_args.cache_dir)
-        self.model = get_model(monitor_args, config, tokenizer)
+        self.model = get_model(training_args, config, tokenizer)
         opt, scheduler = get_optimizer_and_scheduler(monitor_args, self.model)
         adjusted_target_batch_size = collab_optimizer_args.target_batch_size - collab_optimizer_args.batch_size_lead
 
