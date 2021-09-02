@@ -10,27 +10,28 @@ from lib.training.conduit import DeviceConduit
 
 
 class TPUCollaborativeOptimizer(CollaborativeOptimizer):
-    def __init__(self, *args, conduit: Optional[DeviceConduit] = None, **kwargs):
+    def __init__(self, opt, conduit: Optional[DeviceConduit] = None, **kwargs):
         self.conduit = conduit if conduit is not None else DeviceConduit([
-            param for group in self.opt.param_groups for param in group["params"]
-        ], device=self.opt.param_groups[0]["params"][0].device)
+            param for group in opt.param_groups for param in group["params"]
+        ], device=opt.param_groups[0]["params"][0].device)
 
         if xm.is_master_ordinal():
-            super().__init__(*args, **kwargs)
+            super().__init__(opt, **kwargs)
 
     def step(self, *args, **kwargs):
         super().step(*args, **kwargs)
         device_params = [param for group in self.param_groups for param in group["params"]]
 
         # all tpus move params to device
-        self.conduit.move_to_device(device_params, params=True, grads=False)
+        with torch.no_grad():
+            self.conduit.move_to_device(device_params, params=True, grads=False)
 
-        scale = 1.0 if xm.is_master_ordinal() else 0.0
-        for param in device_params:
-            param.mul_(scale)
+            scale = 1.0 if xm.is_master_ordinal() else 0.0
+            for param in device_params:
+                param.mul_(scale)
 
-        # all-reduce up 1 * master + 0 * everyone else => broadcast master weights
-        xm.all_reduce(xm.REDUCE_SUM, device_params)
+            # all-reduce up 1 * master + 0 * everyone else => broadcast master weights
+            xm.all_reduce(xm.REDUCE_SUM, device_params)
 
     def _make_averager(self, **kwargs):
         return TPUFriendlyAverager(
@@ -53,12 +54,14 @@ class TPUFriendlyAverager(TrainingAverager):
         ], device=self.opt.param_groups[0]["params"][0].device)
 
     def get_local_tensors_cpu(self):
+      with torch.no_grad():
         self.conduit.move_to_host([param for group in self.opt.param_groups for param in group["params"]],
                                   params=True, grads=True)
         return [param for param in self.conduit.host_parameters
                 ] + [param.grad for param in self.conduit.host_parameters]
 
     def set_local_tensors(self, updates):
+      with torch.no_grad():
         host_tensors = [param for param in self.conduit.host_parameters
                         ] + [param.grad for param in self.conduit.host_parameters]
         assert len(host_tensors) == len(updates)
@@ -127,5 +130,3 @@ class TPUFriendlyAverager(TrainingAverager):
 
             self.local_step += 1
             return gathered
-
-
