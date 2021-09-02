@@ -39,7 +39,7 @@ class DeviceConduit:
         with mp.Lock():
             self.device_buffer.copy_(torch.cat([tensor.view(-1) for tensor in device_tensors], dim=0))
             self.host_buffer[...] = self.device_buffer.cpu()
-            for host_tensor, host_update in host_tensors, self._slice_into_tensors(self.host_buffer):
+            for host_tensor, host_update in zip(host_tensors, self._slice_into_tensors(self.host_buffer)):
                 host_tensor[...] = host_update
 
     def _move_tensors_to_device(self, host_tensors, device_tensors):
@@ -47,7 +47,7 @@ class DeviceConduit:
             for i in range(len(self.host_parameters)):
                 self.host_buffer[self.strides[i]: self.strides[i + 1]] = host_tensors[i].view(-1)
             self.device_buffer[...] = self.host_buffer.to(self.device)
-            for device_tensor, device_update in device_tensors, self._slice_into_tensors(self.device_buffer):
+            for device_tensor, device_update in zip(device_tensors, self._slice_into_tensors(self.device_buffer)):
                 device_tensor.copy_(device_update)
 
     def _slice_into_tensors(self, buffer):
