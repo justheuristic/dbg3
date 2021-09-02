@@ -6,12 +6,13 @@ import random
 import logging
 from collections import defaultdict
 from functools import partial
+from multiprocessing import cpu_count
 from typing import Sequence, Optional
 
 import torch
 from bnlp import NLTKTokenizer
 from datasets import load_dataset, interleave_datasets
-
+from transformers import AlbertTokenizerFast, AlbertTokenizer
 
 logger = logging.getLogger(__name__)
 bnlp_separator = NLTKTokenizer()
@@ -28,7 +29,7 @@ def create_instances_from_document(tokenizer, document, max_seq_length):
     current_chunk = []
     current_length = 0
 
-    segmented_sents = bnlp_separator.sentence_tokenize(document.replace('।', ' । '))
+    segmented_sents = bnlp_separator.sentence_tokenize(document.replace("।", " । "))
 
     for i, sent in enumerate(segmented_sents):
         current_chunk.append(sent)
@@ -51,7 +52,7 @@ def create_instances_from_document(tokenizer, document, max_seq_length):
                 if random.random() < 0.5:
                     # Random next
                     is_random_next = True
-                    # Note(mingdachen): in this case, we just swap tokens_a and tokens_b
+                    # in this case, we just swap tokens_a and tokens_b
                     tokens_a, tokens_b = tokens_b, tokens_a
                 else:
                     # Actual next
@@ -61,16 +62,15 @@ def create_instances_from_document(tokenizer, document, max_seq_length):
                 assert len(tokens_b) >= 1
 
                 instance = tokenizer(
-                    ' '.join(tokens_a),
-                    ' '.join(tokens_b),
-                    padding='max_length',
-                    truncation='longest_first',
+                    " ".join(tokens_a),
+                    " ".join(tokens_b),
+                    truncation="longest_first",
                     max_length=max_seq_length,
                     # We use this option because DataCollatorForLanguageModeling
                     # is more efficient when it receives the `special_tokens_mask`.
                     return_special_tokens_mask=True,
                 )
-                assert len(instance['input_ids']) <= max_seq_length
+                assert len(instance["input_ids"]) <= max_seq_length
                 instance["sentence_order_label"] = 1 if is_random_next else 0
                 instances.append(instance)
 
@@ -81,7 +81,7 @@ def create_instances_from_document(tokenizer, document, max_seq_length):
 
 def tokenize_function(tokenizer, examples):
     # Remove empty texts
-    texts = [text for text in examples["text"] if len(text) > 0 and not text.isspace()]
+    texts = (text for text in examples["text"] if len(text) > 0 and not text.isspace())
 
     new_examples = defaultdict(list)
 
@@ -90,11 +90,12 @@ def tokenize_function(tokenizer, examples):
         for instance in instances:
             for key, value in instance.items():
                 new_examples[key].append(value)
+
     return new_examples
 
 
 class WrappedIterableDataset(torch.utils.data.IterableDataset):
-    """ Wraps huggingface IterableDataset as pytorch IterableDataset, implement default methods for DataLoader """
+    """Wraps huggingface IterableDataset as pytorch IterableDataset, implement default methods for DataLoader"""
 
     def __init__(self, hf_iterable, verbose: bool = True):
         self.hf_iterable = hf_iterable
@@ -119,19 +120,18 @@ def make_lazy_wikioscar_dataset(
     preprocessing_batch_size: int = 256,
 ):
     wiki = load_dataset("lhoestq/wikipedia_bn", split="train", streaming=True)
-    # ^-- no need for script_version: already compatible with streaming
 
     oscar = load_dataset("oscar", "unshuffled_deduplicated_bn", split="train", streaming=True)
 
     # both should have the same columns
-    wiki = wiki.map(lambda x: {"text": x["text"], "orig": f"wiki[{x['title']}]"})
-    oscar = oscar.map(lambda x: {"text": x["text"], "orig": f"oscar[{x['id']}]"})
+    wiki = wiki.map(lambda x: {"text": x["text"], "orig": f"wiki[{x['title']}]"}, batched=True)
+    oscar = oscar.map(lambda x: {"text": x["text"], "orig": f"oscar[{x['id']}]"}, batched=True)
 
     # merge, shuffle and set pytorch format
     dataset = interleave_datasets([wiki, oscar], probabilities=list(probs))
     dataset = dataset.shuffle(shuffle_buffer_size, seed=shuffle_seed)
     # ^-- this creates a buffer of random examples that will be refilled in background
 
-    dataset = dataset.map(partial(tokenize_function, tokenizer), batch_size=preprocessing_batch_size)
+    dataset = dataset.map(partial(tokenize_function, tokenizer), batched=True, batch_size=preprocessing_batch_size)
     dataset = dataset.with_format("torch")
     return WrappedIterableDataset(dataset)
